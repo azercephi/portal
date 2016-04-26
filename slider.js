@@ -2,6 +2,8 @@ var bar, slider;
 
 window.onload = init;
 
+// THIS CODE IS FROM: http://jsfiddle.net/6PdVV/39/
+
 function init(){
     bar = document.getElementById('bar');
     slider = document.getElementById('slider');
