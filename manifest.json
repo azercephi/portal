@@ -1,17 +1,16 @@
 {
   "manifest_version": 2,
-
   "name": "Portal",
   "version": "0",
   "description": "Uses history to generate new tab pages more compatible with workflow",
-  
   "permissions": [
     "history", 
     "tabs"
   ],
-
   "chrome_url_overrides": {
     "newtab" : "mainpage.html"
+  },
+  "background": {
+    "scripts": ["background.js"]
   }
-
 }
