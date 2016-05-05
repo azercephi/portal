@@ -1,0 +1,17 @@
+- onUpdate does not function by itself. Needs to be used with 
+  onSelectionChanged. Also doesn't work with onActivated, new version
+  of deprecated onSelectionChanged.
+    - appears to be known bug -- not fixed?:
+       https://bugs.chromium.org/p/chromium/issues/detail?id=154631
+- For debugging purposes (or bug-to-be-fixed), refreshing pages
+  chrome://history and chrome://extensions appears to restart/reload
+  extension
+
+- Google Instant may prepare/prerender some tabs beforehand and switch it
+  with the current tab once user selects it. This is why exists onReplaced.
+    - appears to be specificially for search pages
+    - doens't appear to work for bookmarks & the sort
+- Chrome user can "highlight" >1 tab with Shift key so that user can apply
+  actions to all "highlighted" tabs.
+- Active tabs \subseteq highlighted tabs. Exactly 1 active tab per window.
+

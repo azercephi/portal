@@ -5,7 +5,8 @@
   "description": "Uses history to generate new tab pages more compatible with workflow",
   "permissions": [
     "history", 
-    "tabs"
+    "tabs",
+    "topSites"
   ],
   "chrome_url_overrides": {
     "newtab" : "mainpage.html"
