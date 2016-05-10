@@ -53,7 +53,7 @@ function startSlide(event){
     		/ bar.offsetWidth)).toFixed(2));
     info.innerHTML = 'Slider value (start): ' + Math.round(set_perc * 100); 
     bar.addEventListener('mousemove', moveSlide, false);    
-    slider_val = set_perc * 100;
+    slider_val = Math.round(set_perc * 100);
     slider.style.width = slider_val + '%';  
 }
 
@@ -61,7 +61,7 @@ function moveSlide(event){
     var set_perc = ((((event.clientX - bar.offsetLeft) 
     		/ bar.offsetWidth)).toFixed(2));
     info.innerHTML = 'Slider value (moving): ' + Math.round(set_perc * 100);
-    slider_val = set_perc * 100;
+    slider_val = Math.round(set_perc * 100);
     slider.style.width = slider_val + '%';
     
     updateDebugBox();
@@ -72,7 +72,7 @@ function stopSlide(event){
     		/ bar.offsetWidth)).toFixed(2));
     info.innerHTML = 'Slider value (done): ' + Math.round(set_perc * 100);
     bar.removeEventListener('mousemove', moveSlide, false);
-    slider_val = set_perc * 100;
+    slider_val = Math.round(set_perc * 100);
     slider.style.width = slider_val + '%';
 }
 
@@ -92,7 +92,7 @@ function incr(up){
 	if (old_num < 0)
 		old_num = 0;
     slider.style.width = old_num + '%';
-    slider_val = old_num;
+    slider_val = Math.round(old_num);
     info.innerHTML = 'Slider value (incrementing): ' + slider_val;
 
     updateDebugBox();
