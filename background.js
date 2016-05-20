@@ -484,7 +484,7 @@ chrome.history.search({'text':'', 'startTime': oneWeekAgo},
     historyItems.forEach(function(item) {console.log(item); });
 });
 
-chrome.history.addUrl({url:"boredpanda.com"}, function())
+// chrome.history.addUrl({url:"boredpanda.com"}, function())
 
 
 /* top Sites API ************************************************************/
@@ -497,32 +497,32 @@ chrome.history.addUrl({url:"boredpanda.com"}, function())
 
 /* Omnibox API **************************************************************/
 // from lullabot
-function resetDefaultSuggestion() {
-    chrome.omnibox.setDefaultSuggestion({
-    description: 'dapi: Search the Drupal API for %s'
-    });
-  }
-  // resets the default omnibox suggestion
-  resetDefaultSuggestion();
+// function resetDefaultSuggestion() {
+//     chrome.omnibox.setDefaultSuggestion({
+//     description: 'dapi: Search the Drupal API for %s'
+//     });
+//   }
+//   // resets the default omnibox suggestion
+//   resetDefaultSuggestion();
 
-function navigate(url) {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-    chrome.tabs.update(tabs[0].id, {url: url});
-    });
-  }
+// function navigate(url) {
+//     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+//     chrome.tabs.update(tabs[0].id, {url: url});
+//     });
+//   }
 
-chrome.omnibox.onInputEntered.addListener(function(text) {
-    navigate("https://api.drupal.org/api/drupal/7/search/" + text);
-  });
+// chrome.omnibox.onInputEntered.addListener(function(text) {
+//     navigate("https://api.drupal.org/api/drupal/7/search/" + text);
+//   });
 
-// simply.io
-chrome.experimental.omnibox.onInputChanged.addListener(function (text, suggest) {
-    if (text.search('coffee') > -1) {
-        var suggestions = [];
+// // simply.io
+// chrome.experimental.omnibox.onInputChanged.addListener(function (text, suggest) {
+//     if (text.search('coffee') > -1) {
+//         var suggestions = [];
 
-        suggestions.push({ content: 'Coffee - Wikipedia', description: 'Coffee - Wikipedia' });
-        suggestions.push({ content: 'Starbucks Coffee', description: 'Starbucks Coffee' });
+//         suggestions.push({ content: 'Coffee - Wikipedia', description: 'Coffee - Wikipedia' });
+//         suggestions.push({ content: 'Starbucks Coffee', description: 'Starbucks Coffee' });
 
-        suggest(suggestions);
-    }
-});
+//         suggest(suggestions);
+//     }
+// });
