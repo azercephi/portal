@@ -15,3 +15,14 @@
   actions to all "highlighted" tabs.
 - Active tabs \subseteq highlighted tabs. Exactly 1 active tab per window.
 
+Cases to Test:
+- open new tab/webpage in new tab
+- close tab
+- refresh tab
+- navigate to another webpage in same tab
+- tab replaced b/c of google instant
+- open window
+- close window
+
+- User can view tab and scroll for content without actively being in Chrome, at least on Mac
+

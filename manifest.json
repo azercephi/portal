@@ -6,7 +6,8 @@
   "permissions": [
     "history", 
     "tabs",
-    "topSites"
+    "topSites",
+    "storage"
   ],
   "chrome_url_overrides": {
     "newtab" : "mainpage.html"
