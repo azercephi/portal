@@ -13,7 +13,7 @@ logger.webdb.onError = function(tx, e) {
 // In case of success
 logger.webdb.onSuccess = function(tx, r) {
   // probably for debugging want to print out current db state
-  alert("So far so good. " + r.message);
+  console.log("So far so good. " + r.message);
 }
 
 // Create database
@@ -57,14 +57,14 @@ logger.webdb.createTables = function() {
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
-    var tableStats = "domains(id INT NOT NULL PRIMARY KEY," +
+    var tableStats = "domains(id INTEGER NOT NULL PRIMARY KEY," +
                             " domain VARCHAR(20) NOT NULL)";
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
   // Create table associating url with id -- index table
   db.transaction(function(tx) {
-    var tableStats = "urls(id INT NOT NULL PRIMARY KEY," +
+    var tableStats = "urls(id INTEGER NOT NULL PRIMARY KEY," +
                         " url VARCHAR(200) NOT NULL," +
                         " dom_id INT NOT NULL REFERENCES domains(id))";
     // can't seem to auto_incremement, but that should be ok b/c
@@ -76,7 +76,7 @@ logger.webdb.createTables = function() {
 
   // create table associating id with timestamp + access -- log table
   db.transaction(function(tx) {
-    var tableStats = "times(id INT NOT NULL REFERENCES urls(id)," +
+    var tableStats = "times(id INTEGER NOT NULL REFERENCES urls(id)," +
                         " tmstmp BIGINT NOT NULL," +
                         " access CHAR(1) NOT NULL," +
                         " PRIMARY KEY (id, tmstmp))";
@@ -85,7 +85,7 @@ logger.webdb.createTables = function() {
 
   // Create table associating tags with id -- tags table
   db.transaction(function(tx) {
-    var tableStats = "tags(id INT NOT NULL REFERENCES urls(id)," +
+    var tableStats = "tags(id INTEGER NOT NULL REFERENCES urls(id)," +
                         " tag VARCHAR(20) NOT NULL," +
                         " PRIMARY KEY (id, tag))";
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
@@ -112,15 +112,17 @@ logger.webdb.logTo = function(tableName, fullurl, entry) { // arrOfEntries) {
     if (tableName === "domains") {
       tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
             [entry],
-            logger.webdb.onSuccess, logger.webdb.onError);
+            logger.webdb.onSuccess, function(tx, e) {console.log("domains");});
+      // logger.webdb.onError);
     }
     else if (tableName === "urls") {
       // get domain part of url
       tx.executeSql("INSERT INTO urls (url, dom_id)" + 
             " VALUES (?, "+
             " (SELECT id FROM domains WHERE domain=?))",
-             [entry, dname],
-             logger.webdb.onSuccess, logger.webdb.onError);
+             [fullurl, dname],
+             logger.webdb.onSuccess, function(tx, e) {console.log("urls");});
+      // logger.webdb.onError);
     }
     else if (tableName === "times") {
       var access = entry[1];
@@ -130,7 +132,8 @@ logger.webdb.logTo = function(tableName, fullurl, entry) { // arrOfEntries) {
             " VALUES ((SELECT id FROM urls WHERE url=" +
             "?, ?, ?)",
              [fullurl, tmstmp, access],
-             logger.webdb.onSuccess, logger.webdb.onError);
+             logger.webdb.onSuccess, function(tx, e) {console.log("times");});
+      // logger.webdb.onError);
     }
     else if (tableName === "tags") {
       entry.forEach(function(tag) {
@@ -138,7 +141,8 @@ logger.webdb.logTo = function(tableName, fullurl, entry) { // arrOfEntries) {
             " VALUES ((SELECT id FROM urls WHERE url=" +
               "?, ?)",
                [fullurl, tag],
-               logger.webdb.onSuccess, logger.webdb.onError);
+               logger.webdb.onSuccess, function(tx, e) {console.log("tags");});
+               // logger.webdb.onError);
       });
     }
     else  {
@@ -165,6 +169,49 @@ logger.webdb.query = function(fullquery, processor) {
   });
 }
 
+// /** Is website being tracked? */ Why doesn't this work?
+// logger.webdb.doesContain = function(url) {
+//   var db = logger.webdb.db;
+//   var contains;
+//   db.transaction(function(tx) {
+//     tx.executeSql("SELECT * FROM urls WHERE url=?", [url],
+//       // if successful
+//       function(tx, results) {
+//         if (results.length == 0) { contains = false; }
+//         else { contains = true; }
+//         console.log("contains " contains);
+//       },
+//       logger.webdb.onError);
+//     console.log("contains " contains);
+//   });
+
+//   console.log("contains " contains);
+//   return contains;
+// }
+
+
+function updateCarList(transaction, results) {
+    //initialise the listitems variable
+    var listitems = "";
+    //get the car list holder ul
+    var listholder = document.getElementById("carlist");
+
+    //clear cars list ul
+    listholder.innerHTML = "";
+
+    var i;
+    //Iterate through the results
+    for (i = 0; i < results.rows.length; i++) {
+        //Get the current row
+        var row = results.rows.item(i);
+
+        listholder.innerHTML += "<li>" + row.make + " - " + row.model + " (<a href='javascript:void(0);' onclick='deleteCar(" + row.id + ");'>Delete Car</a>)";
+    }
+
+}
+/** Retrieves all websites accesssed within [start_t, end_t) */
+
+
 // May eventually want specific query functions
 /** Retrieves specified website and access record within [start_t, end_t) */
 
@@ -188,35 +235,49 @@ function init() {
 init();
 
 /*****************************************************************************/
-/** Parsing */
+/** Parsing */ 
 
-//import 'url';
-
-var getTags = function(fullurl) {
-  var tabs = [];
-  var parsed = url.parse(fullurl);
-
+var getUrlDomain = function (fullurl) {
+  var parsed = document.createElement('a');
+  parsed.href = fullurl;
+  
   // get domain name tags
-  if (parsed.hostname != null) {
-    // get domain name tags
-    var l = parsed.hostname.split(/[.]/);
-    // remove "www" part, if any
-    l = l.splice(l.indexOf("www") + 1, l.length);
-    // remove ending, if any
-    if (null != 
-      parsed.hostname.match(/.com\b|.edu\b|.org\b|.net\b|.gov\b|.io\b/g)) {
-      l = l.splice(0, l.length - 1);
-    }
-    // update tags
-    tags = tags.concat(l);
-  }
+    if (parsed.hostname != null) {
+      // get domain name and remove "www" part, if any
+      var domain_name = parsed.hostname.split(/www/).pop();
+      return domain_name;
 
-  if (parsed.pathname != null) {
+      // // remove ending, if any
+      // if (null != 
+      //   parsed.hostname.match(/.com\b|.edu\b|.org\b|.net\b|.gov\b|.io\b/g)) {
+      //   l = l.splice(0, l.length - 1);
+      // }
+    }
+}
+
+var getTags = function(fullurl, title) {
+    var tags = [];
+    var parsed = document.createElement('a');
+    parsed.href = fullurl;
+
+  if (parsed.pathname != undefined) {
     tags = tags.concat(parsed.pathname.split(/[/+_.-]/));
   }
 
-  if (parsed.hash != null) {
-     tags = tags.concat(parsed.query.hash.split(/[/+_.-=]/));
+  // if (parsed.hash != undefined) {
+  //   tags = tags.concat(parsed.query.hash.split(/[/+_.-=]/));
+  // }
+
+  if (title != undefined) {
+    titlewords = title.split(" ");
+
+    // iterate through array to remove articles
+    titlewords.forEach(function(word) {
+      if (word != "if" || word != 'the' || word != 'a' || word != 'of' ) {
+        tags.push(word);
+      }
+    });
+
   }
 
   // if (parsed.search != null) {}
@@ -259,7 +320,9 @@ tabState = {};
 pageVisits = {};
 
 // Helper function that updates pageVisits & tabState for a newly created tab
-var updateDictsNew = function(newTab, tag) {
+updateDictsNew = function(newTab, access) {
+  var db = logger.webdb.db;
+
   // tracks the newTab's id in tabState
   // specifically, update key=tabId and lastUrl: , lastTime:
   var initTime = (new Date).getTime();
@@ -267,16 +330,52 @@ var updateDictsNew = function(newTab, tag) {
   tabState[newTab.id] = tabInfo; 
 
   // update pageVisits
-  var timeStamp = initTime.toString() + "+" + tag;
-  // if url is already tracked in pageVisits
-  if (newTab.url in pageVisits) {
-    // append to array "currentTime+n"
-    pageVisits[newTab.url].push(timeStamp);
-  }
-  else {
-    // else, create a new key w/ newTab url and val = ["currentTime+n"]
-    pageVisits[newTab.url] = [timeStamp];
-  }
+  var timeStamp = initTime.toString();
+  // is full url tracked yet?
+  // db.transaction(function (tx) {
+  //   tx.executeSql("SELECT * FROM urls WHERE url=?", [newTab.url],
+  //     function(tx, results) {
+  //       // not results returned means not in table
+  //       if (results.length == 0) {
+          var dname = getUrlDomain(newTab.url);
+  //         // add entry to domains
+          db.transaction (function(tx) {
+            tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
+            [dname], logger.webdb.onSuccess, logger.webdb.onError);
+          });
+
+          // add entry to urls
+          db.transaction (function(tx) {
+            tx.executeSql("INSERT INTO urls (url, dom_id)" + 
+            " VALUES (?, "+
+            " (SELECT id FROM domains WHERE domain=?))",
+             [newTab.url, dname], logger.webdb.onSuccess, logger.webdb.onError);
+          });
+
+          // add entry to tags
+          var tags = getTags(newTab.url, newTab.title);
+          db.transaction (function(tx) {
+            tags.forEach(function(kw) {
+              tx.executeSql("INSERT INTO tags " + 
+            " VALUES ((SELECT id FROM urls WHERE url=" +
+              "?, ?)",
+               [newTab.url, kw],
+               logger.webdb.onSuccess, logger.webdb.onError);
+            });
+          });
+       // }
+        // now url is in table regardless, so can safely update times
+        db.transaction(function(tx) {
+          tx.executeSql("INSERT INTO times " + 
+            " VALUES ((SELECT id FROM urls WHERE url=" +
+            "?, ?, ?)",
+             [newTab.url, timeStamp, access],
+             logger.webdb.onSuccess, function(tx, e) {console.log("times");});
+        });
+        //logger.webdb.logTo("times", newTab.url, Object.freeze([timeStamp, tag]));
+      // },
+      // logger.webdb.onError);
+  //});
 };
 
 /* In case extension is invoked in middle of browsing session, with 
@@ -332,6 +431,7 @@ chrome.tabs.onRemoved.addListener(function (tabId, removeInfo) {
   // append state change to pageVisits "currentTime+e"
   var endTime = (new Date).getTime();
   var timeStamp = endTime.toString() + "+e";
+
   if (tabId == viewingId) {
     pageVisits[lastUrl].push(timeStamp);
   }
@@ -474,15 +574,15 @@ chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
 /* History API **************************************************************/
 
 /* Time stamps */
-var hrInMicrosec = 1000 * 60 * 60;
-var dayInMicrosec = hrInMicrosec * 24;
-var weekInMicrosec = 1000 * 60 * 60 * 24 * 7;
-var oneWeekAgo = (new Date).getTime() - weekInMicrosec;
+// var hrInMicrosec = 1000 * 60 * 60;
+// var dayInMicrosec = hrInMicrosec * 24;
+// var weekInMicrosec = 1000 * 60 * 60 * 24 * 7;
+// var oneWeekAgo = (new Date).getTime() - weekInMicrosec;
 
-chrome.history.search({'text':'', 'startTime': oneWeekAgo},
-  function(historyItems) {
-    historyItems.forEach(function(item) {console.log(item); });
-});
+// chrome.history.search({'text':'', 'startTime': oneWeekAgo},
+//   function(historyItems) {
+//     historyItems.forEach(function(item) {console.log(item); });
+// });
 
 // chrome.history.addUrl({url:"boredpanda.com"}, function())
 
