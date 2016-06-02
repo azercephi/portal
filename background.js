@@ -53,7 +53,7 @@ logger.webdb.cleanTables = function() {
 logger.webdb.createTables = function() {
   var db = logger.webdb.db;  // for ease of use
 
-  // logger.webdb.cleanTables(); // for testing and debugging
+  logger.webdb.cleanTables(); // for testing and debugging
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
@@ -95,10 +95,6 @@ logger.webdb.createTables = function() {
   });
 }
 
-// logger.webdb.deleteFrom(tableName, arrOfEntries) {
-// http://www.html5rocks.com/en/tutorials/webdatabase/todo/
-// }
-
 /** Generalized query function that takes in a string that is in the format
  * of standard SQL SELECT queries. If the query is successful, the data
  * returned is are acted on by processor, which is a function that takes in
@@ -111,47 +107,6 @@ logger.webdb.query = function(fullquery, processor) {
   db.transaction(function(tx) {
     tx.executeSql(fullquery, [], processor, logger.webdb.onError);
   });
-}
-
-// /** Is website being tracked? */ Why doesn't this work?
-// logger.webdb.doesContain = function(url) {
-//   var db = logger.webdb.db;
-//   var contains;
-//   db.transaction(function(tx) {
-//     tx.executeSql("SELECT * FROM urls WHERE url=?", [url],
-//       // if successful
-//       function(tx, results) {
-//         if (results.length == 0) { contains = false; }
-//         else { contains = true; }
-//         console.log("contains " contains);
-//       },
-//       logger.webdb.onError);
-//     console.log("contains " contains);
-//   });
-
-//   console.log("contains " contains);
-//   return contains;
-// }
-
-
-function updateCarList(transaction, results) {
-    //initialise the listitems variable
-    var listitems = "";
-    //get the car list holder ul
-    var listholder = document.getElementById("carlist");
-
-    //clear cars list ul
-    listholder.innerHTML = "";
-
-    var i;
-    //Iterate through the results
-    for (i = 0; i < results.rows.length; i++) {
-        //Get the current row
-        var row = results.rows.item(i);
-
-        listholder.innerHTML += "<li>" + row.make + " - " + row.model + " (<a href='javascript:void(0);' onclick='deleteCar(" + row.id + ");'>Delete Car</a>)";
-    }
-
 }
 
 /** Function that initializes database, if not already in existence
@@ -167,9 +122,6 @@ function init() {
 // of running into asynch problems
 init();
 
-// We will test the logging and retrieving data on dummy data set obtained
-// from top sites. This test involves parsing and retrieving
-
 /** Parsing ****************************************************************/
 var getUrlDomain = function (fullurl) {
   var parsed = document.createElement('a');
@@ -184,6 +136,7 @@ var getUrlDomain = function (fullurl) {
     }
 }
 
+// limitation: assumes title is in English
 var getTags = function(fullurl, title) {
   var tags = [];
   var parsed = document.createElement('a');
@@ -210,7 +163,7 @@ var getTags = function(fullurl, title) {
    })
 };
 
-/** Log/push entry into Database tables **************************************************/
+/** Databse side logging functions ********************************************/
 
 // could we combine the logging url and domain. Would you ever log one w/out other?
 // Log url to 'domains' and 'urls'. Table updating was tested separately. 
@@ -279,6 +232,192 @@ logger.webdb.logTimes = function(fullurl, tmstmp, access){
 
 /** Track user browsing behavior ************************************************/
 
+/* Tracks user behavior as they change tabs. Except for first few fcts, all fcts
+ * are event triggered */
+/* Identifies when user:
+ *   - switches between existing tabs
+ *   - changes url/link within tab
+ *   - when tab is switched in from Google Instant
+ */
+
+/* Declare global variable that tracks which tab is currently in view 
+ * Initialize to dummy value. */
+var viewingId = -1;
+
+// global tabState[tabId] = {lastUniqueUpdate:msTime, lastURL:"http://..."}
+// Because history API doesn't notify when tabs are switched between
+tabState = {};
+
+var peer = function () {
+  console.log(JSON.stringify(tabState));
+  console.log("viewingId", viewingId)
+};
+
+/* In case extension is invoked in middle of browsing session, with 
+ * some windows currently opened, first INITIALIZE dicts with 
+ * currently opened tabs. */
+chrome.tabs.query({},function(tabs){     
+  console.log("\nIntializing dictionary with all open tabs\n");
+  
+  // Initializes viewingID to first tab clicked by user
+  // Nested fcts b/c javascript executes asynchronously, the only way for 
+  // currently set viewingId to be used after it's been determined
+  // is to put it in scope of query callback function
+  chrome.tabs.query({active: true, currentWindow: true}, function(qtabs) {
+    viewingId = qtabs[0].id;
+
+    tabs.forEach(function(tab){
+      // update tabState 
+      var initTime = (new Date).getTime();
+      var tabInfo = {"lastUniqueUpdate":initTime, lastUrl:tab.url};
+      tabState[tab.id] = tabInfo; 
+
+      // add each tab to domains, urls, and tags, if not already there
+      logger.webdb.logToUrls_Domain(tab.url);
+      logger.webdb.logToTags(tab.url, getTags(tab.url, tab.title));
+
+      // add each tab to times table.
+      if (tab.id != viewingId)
+        logger.webdb.logTimes(tab.url, initTime, 's');
+      else 
+        logger.webdb.logTimes(tab.url, initTime, 'c');
+    });
+    peer();
+  });
+});
+
+
+/* Fires when new tab is opened */
+chrome.tabs.onCreated.addListener(function (newTab) {
+  // update tabState 
+  var initTime = (new Date).getTime();
+  var tabInfo = {"lastUniqueUpdate":initTime, lastUrl:newTab.url};
+  tabState[newTab.id] = tabInfo; 
+
+  // add each tab to domains, urls, and tags, if not already there
+  logger.webdb.logToUrls_Domain(newTab.url);
+  logger.webdb.logToTags(newTab.url, getTags(newTab.url, newTab.title));
+
+  // add each tab to times table.
+  logger.webdb.logTimes(newTab.url, initTime, 'c');
+  console.log("Tab created and tracked.", newTab.title);
+});
+
+
+/* Fires upon tab update -- reload/refresh/changed url
+ * assumes tabId already tracked */
+chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
+  // if (changeInfo.status == "complete" && tabId == viewingId)
+  var updateTime = (new Date).getTime();
+  
+  // if page was refreshed, url should be same, no action
+  // if navigated to page, url changed
+  if (tabState[tabId].lastUrl != updatedTab.url) {
+    // save lastUrl, update tabState[tabId] values
+    var lastUrl = tabState[tabId].lastUrl;
+    var tabInfo = {"lastUniqueUpdate":updateTime, lastUrl:updatedTab.url};
+    tabState[tabId] = tabInfo;
+    console.log("tabState updated")
+
+    // log exit in db
+    logger.webdb.logTimes(lastUrl, updateTime, 'e');
+    console.log("old url Updated")
+
+    // track updatedTab to tabState
+
+    // add each tab to domains, urls, and tags, if not already there
+    logger.webdb.logToUrls_Domain(updatedTab.url);
+    logger.webdb.logToTags(updatedTab.url, getTags(updatedTab.url, updatedTab.title));
+
+    // add each tab to times table.
+    logger.webdb.logTimes(updatedTab.url, updateTime, 'c');
+
+    console.log("old url Updated")
+  };
+});
+
+
+/* Fires when viewer has switched between tabs */
+/* This function is deprecated, so find way to make onUpdated and 
+ * onActivated compatible with each other --> known bug, unresolved */
+chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
+  console.log("selection changed")
+  
+  var switchTime = (new Date).getTime();
+
+  /* using old viewingId, which is the id of tab user was previously on,
+   * log switch from previously viewed tab in db */
+  /* need to account for case where tab closed and then view switched
+   * by checking that viewingId is a key of in tabState, 
+   * assming tabState up to date */
+  if (viewingId in tabState) {
+    logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 's');
+  }
+
+  // update viewingId to current tab and get handle on current tab
+  viewingId = tabId;
+
+  // log switch from previously viewed tab in db
+  // assuming continuity in logging
+  logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 'r');
+});
+
+
+/* Fires when an open tab (current or other) is closed. 
+ * viewingId should be updated with onSelectionChanged, which should
+ * fire after this. */
+chrome.tabs.onRemoved.addListener( function (tabId, removeInfo) {
+  // save last URL of removed tab
+  var lastUrl = tabState[tabId].lastUrl;
+  var exitTime = (new Date).getTime();
+
+  // remove tab's Id from tabState b/c no longer need to track
+  delete tabState[tabId];
+  console.log("Tab removed and untracked.");
+
+  // should be safe to assume removed tab was already tracked (not tested yet)
+  logger.webdb.logTimes(lastUrl, exitTime, 'e');
+
+  console.log("Tab " + tabId + " was removed");
+});
+
+
+/* This should only fire for Google Instant in omnibox, but need to keep
+ * tabState updated.
+ * It appears that on updated is also called? -- Investigate further
+ * Perhaps unnecessary b/c accounted for?
+ * Also, this is a very poor way of tracking google instant. More useful is 
+ * knowing the search term and putting that in the tags. Perhaps use omnibox API?
+ */ 
+chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
+  console.log("Operation replace")
+  var replaceTime = (new Date).getTime();
+
+  // save lastUrl from tabState[removedTabId]
+  var lastUrl = tabState[removedTabId].lastUrl;
+
+  // remove removedTab from tabState b/c no longer need to track
+  delete tabState[removedTabId];
+  // log exit in db
+  logger.webdb.logTimes(lastUrl, replaceTime, 'e');
+  console.log("Tab removed and untracked.");
+
+  // track addedTab to tabState 
+  // first get url of addedTabId
+  chrome.tabs.get(addedTabId, function (newTab) {
+    var tabInfo = {"lastUniqueUpdate":replaceTime, lastUrl:newTab.url};
+    tabState[addedTabId] = tabInfo; 
+
+    // add each tab to domains, urls, and tags, if not already there
+    logger.webdb.logToUrls_Domain(newTab.url);
+    logger.webdb.logToTags(newTab.url, getTags(newTab.url, newTab.title));
+
+    // add each tab to times table.
+    logger.webdb.logTimes(newTab.url, replaceTime, 'c');
+
+    console.log("Tab created and tracked.", newTab.title);
+  });
+});
 
 /** Query Database tables **************************************************/
 
