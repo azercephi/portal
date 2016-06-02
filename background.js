@@ -5,12 +5,12 @@ var logger = {};
 logger.webdb = {};
 logger.webdb.db = null;
 
-// In case of error
+// Generic in case of error
 logger.webdb.onError = function(tx, e) {
   alert("There has been an error: " + e.message);
 }
 
-// In case of success
+// Generic in case of success
 logger.webdb.onSuccess = function(tx, r) {
   // probably for debugging want to print out current db state
   console.log("So far so good. " + r.message);
@@ -53,20 +53,21 @@ logger.webdb.cleanTables = function() {
 logger.webdb.createTables = function() {
   var db = logger.webdb.db;  // for ease of use
 
-  // logger.webdb.cleanTables();
+  // logger.webdb.cleanTables(); // for testing and debugging
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
     var tableStats = "domains(id INTEGER NOT NULL PRIMARY KEY," +
-                            " domain VARCHAR(20) NOT NULL," +
-                            " UNIQUE(domain))";
+                            " domain VARCHAR(20) UNIQUE NOT NULL)";
+    // NOTE: the uniqueness means if domain exists, db.transaction 
+    // gives error if tries to add again. Be careful when debugging
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
   // Create table associating url with id -- index table
   db.transaction(function(tx) {
     var tableStats = "urls(id INTEGER NOT NULL PRIMARY KEY," +
-                        " url VARCHAR(200) NOT NULL," +
+                        " url VARCHAR(200) UNIQUE NOT NULL," +
                         " dom_id INT NOT NULL REFERENCES domains(id))";
     // can't seem to auto_incremement, but that should be ok b/c
     /* "webSql (sqlite) PRIMARY KEY automatically increments unless 
@@ -89,66 +90,8 @@ logger.webdb.createTables = function() {
     var tableStats = "tags(id INTEGER NOT NULL REFERENCES urls(id)," +
                         " tag VARCHAR(20) NOT NULL," +
                         " PRIMARY KEY (id, tag))";
+    // NOTE: Primary key => uniqueness so relevant comment above applies here
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
-  });
-}
-
-/** Puts single data entry into specified table
- * domains => fullurl
- * urls    => fullurl
- * times   => fullurl, Object.freeze([timestamp, access])
- * tags    => fullurl, Object.freeze([arrayOfTags]) <-- preprocessed
- */
-/* Access tags are defined below:
- * n = new/created = new tab opened or navigated to in new tab
- * e = exited  = tab closed or navigated away from in same tab
- * s = stalled = current tab exists, but switched to another tab
- * r = returned/reactivated = current tab existed, switched back into focus
- */
-logger.webdb.logTo = function(tableName, fullurl, entry) { // arrOfEntries) {
-  var db = logger.webdb.db;
-  var dname = getUrlDomain(fullurl);
-
-  db.transaction(function(tx) {
-    if (tableName === "domains") {
-      tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
-            [entry],
-            logger.webdb.onSuccess, function(tx, e) {console.log("domains");});
-      // logger.webdb.onError);
-    }
-    else if (tableName === "urls") {
-      // get domain part of url
-      tx.executeSql("INSERT INTO urls (url, dom_id)" + 
-            " VALUES (?, "+
-            " (SELECT id FROM domains WHERE domain=?))",
-             [fullurl, dname],
-             logger.webdb.onSuccess, function(tx, e) {console.log("urls");});
-      // logger.webdb.onError);
-    }
-    else if (tableName === "times") {
-      var access = entry[1];
-      var tmstmp = entry[0];
-      // don't need to specify which columns
-      tx.executeSql("INSERT INTO times " + 
-            " VALUES ((SELECT id FROM urls WHERE url=" +
-            "?, ?, ?)",
-             [fullurl, tmstmp, access],
-             logger.webdb.onSuccess, function(tx, e) {console.log("times");});
-      // logger.webdb.onError);
-    }
-    else if (tableName === "tags") {
-      entry.forEach(function(tag) {
-        tx.executeSql("INSERT INTO tags " + 
-            " VALUES ((SELECT id FROM urls WHERE url=" +
-              "?, ?)",
-               [fullurl, tag],
-               logger.webdb.onSuccess, function(tx, e) {console.log("tags");});
-               // logger.webdb.onError);
-      });
-    }
-    else  {
-      console.log(" Invalid table name.")
-    }
   });
 }
 
@@ -252,8 +195,6 @@ var getUrlDomain = function (fullurl) {
     }
 }
 
-
-
 var getTags = function(fullurl, title) {
   var tags = [];
   var parsed = document.createElement('a');
@@ -278,8 +219,6 @@ var getTags = function(fullurl, title) {
     return hitlist.indexOf(word) == -1 && (/^\w+$/.test(word));
     // '\w' symbol represents [A-Za-z0-9_] re
    })
-
-  // not checking for redundant tags b/c putting into database only keeps unique ones?
 };
 
 /** Log to Database tables **************************************************/
@@ -291,52 +230,15 @@ logger.webdb.logToUrls_Domain = function(fullurl) {
   // get domain part of url
   var dname = getUrlDomain(fullurl);
 
-  // db.transaction(function(tx) {
-  //   tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
-  //         [dname],
-  //         function(tx2, r) {
-  //           // update domains table
-  //           db.transaction(function(tx3) {
-  //             tx3.executeSql(//"INSERT INTO domains (domain) VALUES (?)",
-  //               "INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
-  //                   [dname, dname],
-  //                   //[dname],
-  //                   logger.webdb.onSuccess, 
-  //                   function(tx, e) {console.log("Error logging domains " + e); }
-  //             );
-  //           });
-  //         }, 
-  //         function(tx, e) {console.log("Error logging domains " + e); }
-  //   );
-
-  // partial?
-
-  // db.transaction(function(tx) {
-  //   tx.executeSql("INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
-  //                   [dname, dname],
-  //         function(tx2, r) {
-  //           // update domains table
-  //           db.transaction(function(tx3) {
-  //             tx3.executeSql(//"INSERT INTO domains (domain) VALUES (?)",
-  //               "INSERT INTO domains (domain) VALUES (?)",
-  //               [dname],
-  //                   //[dname],
-  //                   logger.webdb.onSuccess, 
-  //                   function(tx, e) {console.log("Error logging domains " + e); }
-  //             );
-  //           });
-  //         }, 
-  //         function(tx, e) {console.log("Error logging domains " + e); }
-  // );
-
-    // update domains table
+  // update domains table
   db.transaction(function(tx) {
     tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
       // "INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
-          // [dname, dname],
+      // [dname, dname],
           [dname],
           logger.webdb.onSuccess, 
-          function(tx, e) {console.log("Error logging domains " + e); }
+          // logger.webdb.onError
+          function(tx, e) {console.log("Error logging domains ");}// + dname + e); }
     );
     // update urls table
     tx.executeSql("INSERT INTO urls (url, dom_id)" + 
@@ -344,7 +246,8 @@ logger.webdb.logToUrls_Domain = function(fullurl) {
           " (SELECT id FROM domains WHERE domain=?))",
            [fullurl, dname],
            logger.webdb.onSuccess,
-           function(tx, e) {console.log("Error logging urls "+ e); }
+           // logger.webdb.onError
+           function(tx, e) {console.log("Error logging urls ");}//+ fullurl + e); }
     );
   })
 };
@@ -355,14 +258,33 @@ logger.webdb.logToTags = function(fullurl, tagsArray) {
 
   db.transaction(function(tx) {
     tagsArray.forEach(function(tag) {
-      tx.executeSql("INSERT INTO tags " + 
-          " VALUES ((SELECT id FROM urls WHERE url=" +
-            "?, ?)",
-             [fullurl, tag],
-             logger.webdb.onSuccess,
-             function(tx, e) {console.log("Error logging tags " + e);}
+      tx.executeSql("INSERT INTO tags VALUES ((SELECT id FROM urls WHERE url=?), ?)",
+            [fullurl, tag],
+            logger.webdb.onSuccess,
+            // logger.webdb.onError
+            function(tx, e) {console.log("Error logging tags ");}// + fullurl + tag + e);}
       );
     });
+  });
+}
+
+// Log times
+/* Access tags are defined below:
+ * n = new/created = new tab opened or navigated to in new tab
+ * e = exited  = tab closed or navigated away from in same tab
+ * s = stalled = current tab exists, but switched to another tab
+ * r = returned/reactivated = current tab existed, switched back into focus
+ */
+logger.webdb.logToTimes = function(fullurl, tmstmp, access){
+  var db = logger.webdb.db;
+
+  db.transaction(function(tx) {
+    tx.executeSql("INSERT INTO times VALUES ((SELECT id FROM urls WHERE url=?), ?, ?)",
+             [fullurl, tmstmp, access],
+             logger.webdb.onSuccess,
+             // logger.webdb.onError
+             function(tx, e) {console.log("Error logging times");}
+    );
   });
 }
 
@@ -370,13 +292,14 @@ logger.webdb.logToTags = function(fullurl, tagsArray) {
 
 chrome.topSites.get( function(mostVisited) {
   mostVisited.forEach( function(site) {
-    console.log(site.title);
+    // console.log(site.title);
 
     // store urls and domain to database
     logger.webdb.logToUrls_Domain(site.url);
 
     // store tags to database
-    console.log(getTags(site.url, site.title))
-    // logger.webdb.logToTags(site.url, getTags(site.url, site.title));
+    logger.webdb.logToTags(site.url, getTags(site.url, site.title))
   });
 });
+
+// log a dummy selection of times
