@@ -421,128 +421,110 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
 
 /** Query Database tables **************************************************/
 
-// /** Retrieves all tags related to specified url */
-// logger.webdb.getTags4Url = function(fullurl) {
-//   var db = logger.webdb.db;
+/** Retrieves all tags related to specified url */
+// works
+logger.webdb.getTags4Url = function(fullurl) {
+  var db = logger.webdb.db;
 
-//   // function for dealing with returned rows
-//   function onTagsRetrieved(tx, results) {
-//     var t = [];
-//     for (var i = 0; i < results.rows.length; i++) {
-//       // Each row is a standard JavaScript object indexed by col names,
-//       // not including rowid.
-//       var row = results.rows.item(i);
-//       t.push(row['tag']);
-//     }
-//     console.log("Tags of " + fullurl + " = " + t);
-//   };
+  // function for dealing with returned rows
+  function onTagsRetrieved(tx, results) {
+    var t = [];
+    for (var i = 0; i < results.rows.length; i++) {
+      // Each row is a standard JavaScript object indexed by col names,
+      // not including rowid.
+      var row = results.rows.item(i);
+      t.push(row['tag']);
+    }
+    console.log("Tags of " + fullurl + " = " + t);
+  };
 
-//   db.transaction(function(tx) {
-//     tx.executeSql("SELECT * FROM tags WHERE id=(SELECT id FROM urls WHERE url=?)",
-//                   [fullurl],
-//                   onTagsRetrieved,
-//                   function(tx, e) {console.log("Error Tags4Url", e);}
-//     );
-//   });
-// }
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT * FROM tags WHERE id=(SELECT id FROM urls WHERE url=?)",
+                  [fullurl],
+                  onTagsRetrieved,
+                  function(tx, e) {console.log("Error Tags4Url", e);}
+    );
+  });
+}
 
 
-// // May eventually want specific query functions
 // /** Retrieves specified website and access record within [start_t, end_t) */
 
 
-// function errorHandler(transaction, error)
-// {
-//     // error.message is a human-readable string.
-//     // error.code is a numeric error code
-//     alert('Oops.  Error was '+error.message+' (Code '+error.code+')');
- 
-//     // Handle errors here
-//     var we_think_this_error_is_fatal = true;
-//     if (we_think_this_error_is_fatal) return true;
-//     return false;
-// }
- 
-// function dataHandler(transaction, results)
-// {
-//     // Handle the results
-//     var string = "Green shirt list contains the following people:\n\n";
-//     for (var i=0; i<results.rows.length; i++) {
-//         // Each row is a standard JavaScript array indexed by
-//         // column names.
-//         var row = results.rows.item(i);
-//         console.log(row);
-//         string = string + row['id'] + " (ID "+row['tag']+")\n";
-//     }
-//     alert(string);
-// }
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+// TESTING for FUNCTIONS using dummy data
 
 
+// PROBLEM: main query gets the ids related to websites accessed in interval
+// but we want urls, so either we can combine the functions, or, what I am
+// trying to do, do a separate query to get url from id. But returning that
+// is also somewhat problematic, described later.
+/** Retrieves all websites accesssed within [start_t, end_t) */
+logger.webdb.getInterval_allUrls = function(start_t, end_t) {
+  var db = logger.webdb.db;
 
-// // Actual testing
+  // function dealing with returned rows.
+  function onUrlIdsRetrieved(tx, results) {
+    var ids = []; // keeps track of unique ids
+    var wb = [];
 
+    for (var i = 0; i < results.rows.length; i++) {
+      // Each row is a standard JavaScript object indexed by col names,
+      // not including rowid.
+      var row = results.rows.item(i);
+      if (ids.indexOf(row['id']) == -1) {
+        ids.push(row['id']);
 
+        // // knowing id, get url
+        // db.transaction(function(tx) {
+        //   tx.executeSql("SELECT url FROM urls WHERE id=?", [row['id']],
+        //                 function(tx, r) { console.log(r.rows.item(0)); },
+        //                 logger.webdb.onError);
+        // });
+      }
+    }
+    console.log(ids);
+    return ids;
+  };
 
-// /** Retrieves all websites accesssed within [start_t, end_t) */
-// logger.webdb.getInterval_allUrls = function(start_t, end_t) {
-//   var db = logger.webdb.db;
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?",
+                  [start_t, end_t],
+                  onUrlIdsRetrieved,
+                  function(tx, e) {console.log("Error Tags4Url", e);}
+    );
+  });
+}
 
-//   // function dealing with returned rows.
-//   function onUrlIdsRetrieved(tx, results) {
-//     var ids = []; // keeps track of unique ids
-//     var wb = [];
+chrome.topSites.get( function(mostVisited) {
+  mostVisited.forEach( function(site) {
+    // console.log(site.title);
 
-//     for (var i = 0; i < results.rows.length; i++) {
-//       // Each row is a standard JavaScript object indexed by col names,
-//       // not including rowid.
-//       var row = results.rows.item(i);
-//       if (ids.indexOf(row['id']) == -1) {
-//         ids.push(row['id']);
+    // store urls and domain to database
+    logger.webdb.logToUrls_Domain(site.url);
 
-//         // // knowing id, get url
-//         // db.transaction(function(tx) {
-//         //   tx.executeSql("SELECT url FROM urls WHERE id=?", [row['id']],
-//         //                 function(tx, r) { console.log(r.rows.item(0)); },
-//         //                 logger.webdb.onError);
-//         // });
-//       }
-//     }
-//     console.log(ids);
-//     return ids;
-//   };
+    // store tags to database
+    logger.webdb.logToTags(site.url, getTags(site.url, site.title))
+  });
 
-//   db.transaction(function(tx) {
-//     tx.executeSql("SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?",
-//                   [start_t, end_t],
-//                   onUrlIdsRetrieved,
-//                   function(tx, e) {console.log("Error Tags4Url", e);}
-//     );
-//   });
-// }
+  // log a dummy selection of times
+  // Current time + various other times and access for url = http://www.boredpanda.com/.
+  initTime = 1464858334702;//(new Date).getTime();
+  logger.webdb.logTimes("http://www.boredpanda.com/", initTime, 'n');
+  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+10, 's');
+  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+20, 'r');
+  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+30, 's');
+  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+40, 'e');
 
-// chrome.topSites.get( function(mostVisited) {
-//   mostVisited.forEach( function(site) {
-//     // console.log(site.title);
+  // logger.webdb.getTags4Url("http://www.boredpanda.com/");
 
-//     // store urls and domain to database
-//     logger.webdb.logToUrls_Domain(site.url);
-
-//     // store tags to database
-//     logger.webdb.logToTags(site.url, getTags(site.url, site.title))
-//   });
-
-//   // log a dummy selection of times
-//   // Current time + various other times and access for url = http://www.boredpanda.com/.
-//   initTime = 1464858334702;//(new Date).getTime();
-//   logger.webdb.logTimes("http://www.boredpanda.com/", initTime, 'n');
-//   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+10, 's');
-//   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+20, 'r');
-//   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+30, 's');
-//   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+40, 'e');
-
-//   // logger.webdb.getTags4Url("http://www.boredpanda.com/");
-//   var l = logger.webdb.getInterval_allUrls(1464858334702, 1464858334740);
-//   console.log("l is ", l);
-// });
+  // PROBLEM: Runs asynchronously, specifically, if I try to return the websites
+  // I want, this call is the first to run after db are created, which means
+  // it finds no entries... However, if I try console.log(websites) it runs
+  // in the order synchro in this encapsulating topsites function
+  var l = logger.webdb.getInterval_allUrls(1464858334702, 1464858334740);
+  console.log("l is ", l);
+});
 
 
