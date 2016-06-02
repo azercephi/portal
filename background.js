@@ -53,12 +53,13 @@ logger.webdb.cleanTables = function() {
 logger.webdb.createTables = function() {
   var db = logger.webdb.db;  // for ease of use
 
-  logger.webdb.cleanTables();
+  // logger.webdb.cleanTables();
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
     var tableStats = "domains(id INTEGER NOT NULL PRIMARY KEY," +
-                            " domain VARCHAR(20) NOT NULL)";
+                            " domain VARCHAR(20) NOT NULL," +
+                            " UNIQUE(domain))";
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
@@ -233,3 +234,149 @@ function init() {
 // Initialize database for use -- This needs to happen first, exists possibility
 // of running into asynch problems
 init();
+
+// We will test the logging and retrieving data on dummy data set obtained
+// from top sites. This test involves parsing and retrieving
+
+/** Parsing ****************************************************************/
+var getUrlDomain = function (fullurl) {
+  var parsed = document.createElement('a');
+  parsed.href = fullurl;
+  
+  // get domain name tags
+    if (parsed.hostname != null) {
+      // get domain name and remove "www" part, if any
+      // edge case: if any other part of url also include 'www.'
+      var domain_name = parsed.hostname.split(/www\.{1}/).pop();
+      return domain_name;
+    }
+}
+
+
+
+var getTags = function(fullurl, title) {
+  var tags = [];
+  var parsed = document.createElement('a');
+  parsed.href = fullurl;
+
+  // get keywords from path name
+  if (parsed.pathname != undefined) {
+    tags = tags.concat(parsed.pathname.split(/[/+_=.-]+/)
+                         .map (function (tag) { return tag.toLowerCase(); })
+                  );
+  }
+  // get keywords from title
+  if (title != undefined) {
+    tags = tags.concat(title.split(/[ ,.;:]+/)
+                         .map (function (tag) { return tag.toLowerCase(); }));
+  }
+
+  // filter tags of unwanted words and non words
+  return tags.filter(function (word, i) {
+    var hitlist = ["", "the", "a", "an", "&", "-", "and", "or", "but", 
+    "yet", "so", "for"];
+    return hitlist.indexOf(word) == -1 && (/^\w+$/.test(word));
+    // '\w' symbol represents [A-Za-z0-9_] re
+   })
+
+  // not checking for redundant tags b/c putting into database only keeps unique ones?
+};
+
+/** Log to Database tables **************************************************/
+
+// could we combine the logging url and domain. Would you ever log one w/out other?
+// Log url to 'domains' and 'urls'. Table updating was tested separately. 
+logger.webdb.logToUrls_Domain = function(fullurl) {
+  var db = logger.webdb.db;
+  // get domain part of url
+  var dname = getUrlDomain(fullurl);
+
+  // db.transaction(function(tx) {
+  //   tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
+  //         [dname],
+  //         function(tx2, r) {
+  //           // update domains table
+  //           db.transaction(function(tx3) {
+  //             tx3.executeSql(//"INSERT INTO domains (domain) VALUES (?)",
+  //               "INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
+  //                   [dname, dname],
+  //                   //[dname],
+  //                   logger.webdb.onSuccess, 
+  //                   function(tx, e) {console.log("Error logging domains " + e); }
+  //             );
+  //           });
+  //         }, 
+  //         function(tx, e) {console.log("Error logging domains " + e); }
+  //   );
+
+  // partial?
+
+  // db.transaction(function(tx) {
+  //   tx.executeSql("INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
+  //                   [dname, dname],
+  //         function(tx2, r) {
+  //           // update domains table
+  //           db.transaction(function(tx3) {
+  //             tx3.executeSql(//"INSERT INTO domains (domain) VALUES (?)",
+  //               "INSERT INTO domains (domain) VALUES (?)",
+  //               [dname],
+  //                   //[dname],
+  //                   logger.webdb.onSuccess, 
+  //                   function(tx, e) {console.log("Error logging domains " + e); }
+  //             );
+  //           });
+  //         }, 
+  //         function(tx, e) {console.log("Error logging domains " + e); }
+  // );
+
+    // update domains table
+  db.transaction(function(tx) {
+    tx.executeSql("INSERT INTO domains (domain) VALUES (?)",
+      // "INSERT INTO domains (domain) SELECT ? FROM domains WHERE NOT EXISTS(SELECT * FROM domains WHERE domain=?)"
+          // [dname, dname],
+          [dname],
+          logger.webdb.onSuccess, 
+          function(tx, e) {console.log("Error logging domains " + e); }
+    );
+    // update urls table
+    tx.executeSql("INSERT INTO urls (url, dom_id)" + 
+          " VALUES (?, "+
+          " (SELECT id FROM domains WHERE domain=?))",
+           [fullurl, dname],
+           logger.webdb.onSuccess,
+           function(tx, e) {console.log("Error logging urls "+ e); }
+    );
+  })
+};
+
+// Log tags -- didn't ck tags for redundancies b/c assume database k-v unique
+logger.webdb.logToTags = function(fullurl, tagsArray) {
+  var db = logger.webdb.db;
+
+  db.transaction(function(tx) {
+    tagsArray.forEach(function(tag) {
+      tx.executeSql("INSERT INTO tags " + 
+          " VALUES ((SELECT id FROM urls WHERE url=" +
+            "?, ?)",
+             [fullurl, tag],
+             logger.webdb.onSuccess,
+             function(tx, e) {console.log("Error logging tags " + e);}
+      );
+    });
+  });
+}
+
+// Actual testing
+
+chrome.topSites.get( function(mostVisited) {
+  mostVisited.forEach( function(site) {
+    console.log(site.title);
+
+    // store urls and domain to database
+    logger.webdb.logToUrls_Domain(site.url);
+
+    // store tags to database
+    console.log(getTags(site.url, site.title))
+    // logger.webdb.logToTags(site.url, getTags(site.url, site.title));
+  });
+});
