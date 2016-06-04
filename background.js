@@ -317,11 +317,10 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
     var lastUrl = tabState[tabId].lastUrl;
     var tabInfo = {"lastUniqueUpdate":updateTime, lastUrl:updatedTab.url};
     tabState[tabId] = tabInfo;
-    console.log("tabState updated")
 
     // log exit in db
     logger.webdb.logTimes(lastUrl, updateTime, 'e');
-    console.log("old url Updated")
+    // console.log("old url Updated")
 
     // track updatedTab to tabState
 
@@ -332,7 +331,8 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
     // add each tab to times table.
     logger.webdb.logTimes(updatedTab.url, updateTime, 'c');
 
-    console.log("old url Updated")
+    console.log(tabId + " updated to " + tabState[tabId]);
+    peer();
   };
 });
 
@@ -341,7 +341,6 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
 /* This function is deprecated, so find way to make onUpdated and 
  * onActivated compatible with each other --> known bug, unresolved */
 chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
-  console.log("selection changed")
   
   var switchTime = (new Date).getTime();
 
@@ -354,12 +353,18 @@ chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
     logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 's');
   }
 
+  console.log("Switched attention from tab " + viewingId + " to " + tabId);
+
   // update viewingId to current tab and get handle on current tab
   viewingId = tabId;
 
   // log switch from previously viewed tab in db
-  // assuming continuity in logging
+  // can't just assume continuity b/c onSelectionChanged is fired before onReplaced
+  if (viewingId in tabState) {
   logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 'r');
+  }
+
+  peer();
 });
 
 
@@ -373,12 +378,11 @@ chrome.tabs.onRemoved.addListener( function (tabId, removeInfo) {
 
   // remove tab's Id from tabState b/c no longer need to track
   delete tabState[tabId];
-  console.log("Tab removed and untracked.");
 
   // should be safe to assume removed tab was already tracked (not tested yet)
   logger.webdb.logTimes(lastUrl, exitTime, 'e');
 
-  console.log("Tab " + tabId + " was removed");
+  console.log("Tab " + tabId + " was removed.");
 });
 
 
@@ -389,6 +393,7 @@ chrome.tabs.onRemoved.addListener( function (tabId, removeInfo) {
  * Also, this is a very poor way of tracking google instant. More useful is 
  * knowing the search term and putting that in the tags. Perhaps use omnibox API?
  */ 
+/* Fires after onSelection changed, which is troublesome. */
 chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
   console.log("Operation replace")
   var replaceTime = (new Date).getTime();
@@ -400,7 +405,6 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
   delete tabState[removedTabId];
   // log exit in db
   logger.webdb.logTimes(lastUrl, replaceTime, 'e');
-  console.log("Tab removed and untracked.");
 
   // track addedTab to tabState 
   // first get url of addedTabId
@@ -415,9 +419,11 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
     // add each tab to times table.
     logger.webdb.logTimes(newTab.url, replaceTime, 'c');
 
-    console.log("Tab created and tracked.", newTab.title);
+    console.log("Tab " + removedTabId + " was replaced by " + addedTabId);
+    peer();
   });
 });
+
 
 /** Query Database tables **************************************************/
 
