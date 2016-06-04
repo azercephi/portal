@@ -226,7 +226,7 @@ logger.webdb.logToTags = function(fullurl, tagsArray) {
 
 // Log times
 /* Access tags are defined below:
- * n = new/created = new tab opened or navigated to in new tab
+ * c = new/created = new tab opened or navigated to in new tab
  * e = exited  = tab closed or navigated away from in same tab
  * s = stalled = current tab exists, but switched to another tab
  * r = returned/reactivated = current tab existed, switched back into focus
@@ -310,12 +310,85 @@ logger.webdb.getUrls4Tag = function(tag) {
     tx.executeSql("SELECT * FROM urls WHERE id=(SELECT id FROM tags WHERE tag=?)",
                   [tag],
                   onUrlsRetrieved,
-                  function(tx, e) {console.log("Error onUrlsRetrieved", e); }
+                  function(tx, e) {console.log("Error onUrlsRetrieved", e);}
     );
   });
 }
 
-/** Retrieves all websites accesssed within [start_t, end_t) */
+// BUG: What condition is causing is s->s to be logged?
+/* folds the time stamps of url into a "normalized total time"
+ *     - ignore time intervals \leq \epsilon  (not yet implemented)
+ *     - accessed with rapid switching or in long blocks (maybe if has time)
+ */
+/* In order of decreasing weight:
+ * -Edge-              -Scale by-
+ * c -> s == r -> s             
+ * c -> e == r -> e
+ * s -> r
+ * s -> e
+ */
+function fold(tx, results) {
+  var cs = 1, ce = 0.9, sr = 0.75, se = 0.5;    // scale factors
+  var total = 0;         // running normalized time
+  var prevT, prevAc;     // remember previous timestamp
+
+  // rows are returned in chronological order -- as they were logged, which means
+  // can proccess like a stream
+  for (var i = 0; i < results.rows.length; i++) {
+      if (i == 0) {
+      prevT = results.rows.item(i)['tmstmp'];
+      prevAc = results.rows.item(i)['access'];
+    }
+    else {
+      var row = results.rows.item(i);
+
+      if ((prevAc == 'c' && row['access'] == 's')
+           || (prevAc == 'r' && row['access'] == 's')) {
+        total += row['tmstmp'] - prevT;
+        prevT = row['tmstmp'];
+        prevAc = row['access'];
+      }
+      else if ((prevAc == 'c' && row['access'] == 'e')
+                || (prevAc == 'r' && row['access'] == 'e')) {
+        total += (row['tmstmp'] - prevT) * 0.9;
+        prevT = row['tmstmp'];
+        prevAc = row['access'];
+      }
+      else if (prevAc == 's' && row['access'] == 'r') {
+        total += (row['tmstmp'] - prevT) * 0.75;
+        prevT = row['tmstmp'];
+        prevAc = row['access'];
+      }
+      else if (prevAc == 's' && row['access'] == 'e') {
+        total += (row['tmstmp'] - prevT) * 0.5;
+        prevT = row['tmstmp'];
+        prevAc = row['access'];
+      }
+      else {
+        console.log("Invalid logging happened at ", row['tmstmp']);
+      }
+    }
+  }
+  console.log("fold", total);
+  return total;
+}
+
+/** Retrieves all time stamps for a given the url's corresponding id (urls table)
+ * and folds the time stamps into a "normalized total time" */
+logger.webdb.getWeight4UrlId = function (urlId, start_t, end_t) {
+  var db = logger.webdb.db;
+
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT * FROM times WHERE id=? AND tmstmp BETWEEN ? AND ?",
+                  [urlId, start_t, end_t],
+                  fold,
+                  function(tx, e) {console.log("Error getWeight4UrlId", e)}
+    );
+  });
+
+}
+
+/** Retrieves all website Ids accesssed within [start_t, end_t) */
 logger.webdb.getUrls4Interval = function(start_t, end_t) {
   var db = logger.webdb.db;
 
@@ -329,16 +402,9 @@ logger.webdb.getUrls4Interval = function(start_t, end_t) {
       var row = results.rows.item(i);
       if (ids.indexOf(row['id']) == -1) {
         ids.push(row['id']);
-
-        db.transaction(function(tx) {
-          tx.executeSql("SELECT * FROM urls WHERE id=?", [row['id']],
-                        onUrlsRetrieved,
-                        function(tx, e) {console.log("Error onUrlsIdsRetrieved", e);}
-          );
-        });
       }
     }
-    console.log(ids);
+    // console.log(ids);
     return ids;
   };
 
@@ -359,11 +425,10 @@ logger.webdb.storeRank = function (id, pairs) {
   var db = logger.webdb.db;
   // insert each pair as separate row
   pairs.forEach(function (kfpair) {
-    console.log(kfpair['tag']);
     db.transaction(function(tx) {
       tx.executeSql("INSERT INTO ranks VALUES(?, ?, ?)",
         [id, kfpair['tag'], kfpair['freq']],
-        function(tx, e) {console.log("worked storing ranks ")},
+        webdb.db.onSuccess,
         function(tx, e) {console.log("Error storing ranks ");
       });
     });
@@ -381,7 +446,6 @@ logger.webdb.getRanks = function (id) {
       var pair = {url: row['tag'], title: row['freq']}
       r.push(pair);
     }
-    console.log("Ranks :" + r);
     return r;
   };
 
@@ -618,22 +682,24 @@ chrome.topSites.get( function(mostVisited) {
     logger.webdb.logToTags(site.url, getTags(site.url, site.title))
   });
 
-  // log a dummy selection of times
-  // Current time + various other times and access for url = http://www.boredpanda.com/.
-  initTime = 1464858334702;//(new Date).getTime();
-  logger.webdb.logTimes("http://www.boredpanda.com/", initTime, 'n');
-  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+10, 's');
-  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+20, 'r');
-  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+30, 's');
-  logger.webdb.logTimes("http://www.boredpanda.com/", initTime+40, 'e');
+  // // log a dummy selection of times
+  // // Current time + various other times and access for url = http://www.boredpanda.com/.
+  // initTime = 1464858334702;//(new Date).getTime();
+  // logger.webdb.logTimes("http://www.boredpanda.com/", initTime, 'c');
+  // logger.webdb.logTimes("http://www.boredpanda.com/", initTime+10, 's');
+  // logger.webdb.logTimes("http://www.boredpanda.com/", initTime+20, 'r');
+  // logger.webdb.logTimes("http://www.boredpanda.com/", initTime+30, 's');
+  // logger.webdb.logTimes("http://www.boredpanda.com/", initTime+40, 'e');
 
-  console.log("Tags return: ", logger.webdb.getTags4Url("http://www.boredpanda.com/"));
-  console.log("Urls return: ", logger.webdb.getUrls4Tag("pandas"));
+  // console.log("Tags return: ", logger.webdb.getTags4Url("http://www.boredpanda.com/"));
+  // console.log("Urls return: ", logger.webdb.getUrls4Tag("pandas"));
 
   // PROBLEM: Runs asynchronously, specifically, if I try to return the websites
   // I want, this call is the first to run after db are created, which means
   // it finds no entries... However, if I try console.log(websites) it runs
   // in the order synchro in this encapsulating topsites function
-  // var l = logger.webdb.getUrls4Interval(1464858334712, 1465017953575);
-  // console.log("l is ", l);
+  var l = logger.webdb.getUrls4Interval(1464858334712, 1465026302512);
+  console.log("l is ", l);
+
+  console.log("Stamps: ", logger.webdb.getWeight4UrlId(19, 1464858334712, 1465039213954));
 });
