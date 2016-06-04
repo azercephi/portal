@@ -84,6 +84,7 @@ function getTopTags(timeStamp) {
 
 function mergeRankings(target, source) {
     // merge two rankings
+    // actually merges the value of each property
     for (var property in source) {  
         if ( source.hasOwnProperty(property) ) {
             var sourceProperty = source[ property ];
@@ -99,6 +100,61 @@ function mergeRankings(target, source) {
     }
     return target;
 };
+
+function mergeRankingsWeighted(target, source, source_weight) {
+    // merge two rankings by given weight and then normalize them 
+    // actually merges the value of each property
+    for (var property in source) {  
+        if ( source.hasOwnProperty(property) ) {
+            var sourceProperty = source[ property ];
+            if ( typeof sourceProperty === 'object' ) {
+                target[ property ] = util.merge( target[ property ], sourceProperty );
+                continue;
+            }
+            target[ property ] += sourceProperty;
+        }
+    }
+    for (var a = 2, l = arguments.length; a < l; a++) {
+        mergeRankings(target, arguments[a]);
+    }
+    return target;
+};
+
+function trimNormRankings(source,p_max, total_freq) {
+    // trims the ranking to top p_max entries 
+    // normazlizes total freq down to total_freq
+
+    // check for empty source
+    if (source == {}) {
+        return {};
+    }
+
+    var target = {};
+    var p_count = 0;
+    var freq_sum = 0;
+
+    // transfer the top tags into target
+
+    top_tags = Object.keys(source).sort(function(a,b){return -source[a]+source[b]});
+
+    for (var tag in top_tags) {
+        target[top_tags[tag]] = source[top_tags[tag]];
+        freq_sum += source[top_tags[tag]];
+        p_count += 1;
+        if (p_count >= p_max) {
+            break;
+        }
+    }
+
+    // normalize the new ranking
+    if (freq_sum > 0) {
+        for (var tag in target) {
+            target[tag] = Math.floor(target[tag] * total_freq / freq_sum);
+        }
+    }
+    
+    return target;
+}
 
 
 function getPagesByTag(tagName, timeStamp) {
@@ -118,21 +174,60 @@ function getPagesByTag(tagName, timeStamp) {
 }
 
 
-function updateRanks(timeStamp) {
+function getRecords(start_time, end_time) {
+    // placeholder
+    return {"aha": 2, "blah": 8, "blahh": 8};
+}
+
+function storeRanks(rank_id, ranks) {
+    // placeholder
+    console.log(rank_id, ranks);
+}
+
+function getRanks(rank_id) {
+    // placeholder
+    return {"aha": 2, "blah": 8, "blahh": 8};
+}
+
+function updateRanks(date) {
     // updates the corresponding rankings
+    // called at the end of each hour
 
     var hrInMicrosec = 1000 * 60 * 60;
     var dayInMicrosec = hrInMicrosec * 24;
     var weekInMicrosec = 1000 * 60 * 60 * 24 * 7;
     var oneWeekAgo = (new Date).getTime() - weekInMicrosec;
+    var d = date;
+    // for tesing
+    var d = new Date();
 
+    // update hourly ranks
     // get the tags & freq during the past hour
-    // placeholder
-    var last_hour = timeStamp - (timeStamp % hrInMicrosec);
-    var next_hour = last_hour + hrInMicrosec;
+    var past_hour_start = timeStamp - (timeStamp % hrInMicrosec) - hrInMicrosec;
+    var past_hour_end = past_hour_start + hrInMicrosec;
 
-    // hour_record = getRecord(last_hour , next_hour)
-    // new_hour_record = mergeRankings(hour_record, getDailyRanks)
+    var hour_ranks = getRecords(past_hour_start , past_hour_end)
+    // store the hour ranks
+    var hour_rank_id = "H" + String(d.getFullYear()) + String(d.getMonth()) + String(d.getDay()) + String(d.getHours()-1)
+    storeRanks(hour_rank_id, hour_ranks);
+
+    // update daily ranks
+    // exponential decay factor 
+    var alpha = 0.85;
+    var total_weight = 10000;
+    var max_tags = 100;
+    var daily_rank_id = "D" + String(d.getHours()-1);
+    // multiply by weight
+    var daily_ranks = trimNormRankings(getRanks(daily_rank_id),max_tags, alpha * total_weight);
+    var trimmed_hour_ranks = trimNormRankings(hour_ranks, max_tags, (1-alpha) * total_weight);
+    // merge the two ranks 
+    daily_ranks = trimNormRankings(mergeRankings(daily_ranks, trimmed_hour_ranks), max_tags, total_weight);
+
+    // store the updated daily rank
+    storeRanks(daily_rank_id, daily_ranks);
+
+    
+
 
 }
 
@@ -144,7 +239,7 @@ function getDailyRanks(timeStamp) {
 }
 
 function getWeeklyRanks(timeStamp) {
-    return {"aha": 2, "blah": 8};
+    return {"aha": 2, "blah": 8, "blahh": 8};
 }
 
 function getPreviousHourRanks(timeStamp) {
@@ -155,5 +250,6 @@ function getOverallRanks(timeStamp) {
     return {"aha": 2, "blah": 8};
 }
 
-console.log(getAdjustedTopTags(2));
+
+console.log(trimNormRankings({"aha": 2, "blah": 8, "blsah": 8}, 100 ,1000000));
 
