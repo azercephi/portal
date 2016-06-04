@@ -134,8 +134,7 @@ function trimNormRankings(source,p_max, total_freq) {
     var freq_sum = 0;
 
     // transfer the top tags into target
-
-    top_tags = Object.keys(source).sort(function(a,b){return -source[a]+source[b]});
+    var top_tags = Object.keys(source).sort(function(a,b){return -source[a]+source[b]});
 
     for (var tag in top_tags) {
         target[top_tags[tag]] = source[top_tags[tag]];
@@ -191,16 +190,14 @@ function getRanks(rank_id) {
 
 function updateRanks(date) {
     // updates the corresponding rankings
-    // called at the end of each hour
+    // should be called at the end of each hour
 
     var hrInMicrosec = 1000 * 60 * 60;
-    var dayInMicrosec = hrInMicrosec * 24;
-    var weekInMicrosec = 1000 * 60 * 60 * 24 * 7;
-    var oneWeekAgo = (new Date).getTime() - weekInMicrosec;
-    var d = date;
-    // for tesing
-    var d = new Date();
 
+    var d = date;
+    // for testing
+    var d = new Date();
+    timeStamp = d.getTime();
     // update hourly ranks
     // get the tags & freq during the past hour
     var past_hour_start = timeStamp - (timeStamp % hrInMicrosec) - hrInMicrosec;
@@ -208,7 +205,7 @@ function updateRanks(date) {
 
     var hour_ranks = getRecords(past_hour_start , past_hour_end)
     // store the hour ranks
-    var hour_rank_id = "H" + String(d.getFullYear()) + String(d.getMonth()) + String(d.getDay()) + String(d.getHours()-1)
+    var hour_rank_id = "H" + String(d.getHours()-1)
     storeRanks(hour_rank_id, hour_ranks);
 
     // update daily ranks
@@ -226,30 +223,55 @@ function updateRanks(date) {
     // store the updated daily rank
     storeRanks(daily_rank_id, daily_ranks);
 
-    
+    // update alltime ranks 
+    var alltime_rank_id = "A";
+    var alltime_ranks = getRanks(alltime_rank_id);
+    var alpha = 0.85;
+    var total_weight = 10000;
+    var max_tags = 100;
+    alltime_ranks = trimNormRankings(alltime_ranks, max_tags, alpha * total_weight);
+    alltime_ranks = trimNormRankings(mergeRankings(trimmed_hour_ranks, alltime_ranks), max_tags, total_weight);
+    // update the corresponding ranking
+    storeRanks(alltime_rank_id, alltime_ranks);
 
+    // update weekly ranks
+    // only do this after a day has passed
+    if (d.getHours() == 0) {
+        var past_day_ranks = {};
+        // get all records for the past day
+        for (var i = 0; i < 23; i++) {
+            // get the record of ith hour of past day
+            hour_rank_id = "H" + String(i);
+            hour_ranks = getRanks(hour_rank_id);
+            past_day_ranks = mergeRankings(past_day_ranks, hour_ranks);
+        }
+        // get the corresponding weekday rank id
+        var weekly_rank_id = "W" + String((d.getDay() + 7 - 1) % 7);
+        var weekly_ranks = getRanks(weekly_rank_id);
+        var alpha = 0.85;
+        var total_weight = 10000;
+        var max_tags = 100;
+        past_day_ranks = trimNormRankings(past_day_ranks,max_tags, (1-alpha) * total_weight);
+        weekly_ranks = trimNormRankings(weekly_ranks, max_tags, alpha * total_weight);
+        weekly_ranks = trimNormRankings(mergeRankings(past_day_ranks, weekly_ranks), max_tags, total_weight);
+        // update the corresponding ranking
+        storeRanks(weekly_rank_id, weekly_ranks);
+    }
 
+    // generate the new prediction ranking for next (current) hour
+    // combines stat from daily, weekly, hourly and overall rankings
+    daily_ranks = getRanks("D" + String(d.getHours()));
+    weekly_ranks = getRanks("W" + String(d.getDay()));
+    previous_hourly_ranks = getRanks("H" + String((d.getHours() + 24 - 1) % 24 ));
+    overall_ranks = getRanks("A");
+    weighted_ranks = mergeRankings(daily_ranks, weekly_ranks);
+    weighted_ranks = mergeRankings(weighted_ranks, previous_hourly_ranks);
+    weighted_ranks = mergeRankings(weighted_ranks, overall_ranks);
+    storeRanks("P" + String(d.getHours()), weighted_ranks);
 }
 
 
-function getDailyRanks(timeStamp) {
-    // returns ranks in the form of 
-    // ["tag_1": score_1, "tag_2" : score_2 ]
-    return {"aha": 2, "blah": 3};
-}
-
-function getWeeklyRanks(timeStamp) {
-    return {"aha": 2, "blah": 8, "blahh": 8};
-}
-
-function getPreviousHourRanks(timeStamp) {
-    return {"aha": 2, "blah": 8};
-}
-
-function getOverallRanks(timeStamp) {
-    return {"aha": 2, "blah": 8};
-}
 
 
-console.log(trimNormRankings({"aha": 2, "blah": 8, "blsah": 8}, 100 ,1000000));
+console.log(updateRanks(2));
 
