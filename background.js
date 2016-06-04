@@ -7,13 +7,13 @@ logger.webdb.db = null;
 
 // Generic in case of error
 logger.webdb.onError = function(tx, e) {
-  console.log("There has been an error: " + e.message);
+  // console.log("There has been an error: " + e.message);
 }
 
 // Generic in case of success
 logger.webdb.onSuccess = function(tx, r) {
   // probably for debugging want to print out current db state
-  console.log("So far so good. " + r.message);
+  // console.log("So far so good. " + r.message);
 }
 
 // Create database
@@ -125,11 +125,11 @@ logger.webdb.createRecords = function() {
  * and creates tables, if not already in existence */
 function init() {
   logger.webdb.open();
-  console.log("Create db for logging.");
+  // console.log("Create db for logging.");
   logger.webdb.createDataTables();
-  console.log("Created tables for db.");
+  // console.log("Created tables for db.");
   logger.webdb.createRecords();
-  console.log("Created table for recording tag-frequency pairs.")
+  // console.log("Created table for recording tag-frequency pairs.")
 }
 
 // Initialize database for use -- This needs to happen first, exists possibility
@@ -194,7 +194,7 @@ logger.webdb.logToUrls_Domain = function(title, fullurl) {
           [dname],
           logger.webdb.onSuccess, 
           // logger.webdb.onError
-          function(tx, e) {console.log("Error logging domains ");}// + dname + e); }
+          function(tx, e) {/*console.log("Error logging domains ");*/}// + dname + e); }
     );
     // update urls table
     tx.executeSql("INSERT INTO urls (title, url, dom_id)" + 
@@ -203,7 +203,7 @@ logger.webdb.logToUrls_Domain = function(title, fullurl) {
            [title, fullurl, dname],
            logger.webdb.onSuccess,
            // logger.webdb.onError
-           function(tx, e) {console.log("Error logging urls ");}//+ fullurl + e); }
+           function(tx, e) {/*console.log("Error logging urls ");*/}//+ fullurl + e); }
     );
   })
 };
@@ -218,7 +218,7 @@ logger.webdb.logToTags = function(fullurl, tagsArray) {
             [fullurl, tag],
             logger.webdb.onSuccess,
             // logger.webdb.onError
-            function(tx, e) {console.log("Error logging tags ");}// + fullurl + tag + e);}
+            function(tx, e) {/*console.log("Error logging tags ");*/}// + fullurl + tag + e);}
       );
     });
   });
@@ -239,7 +239,7 @@ logger.webdb.logTimes = function(fullurl, tmstmp, access){
              [fullurl, tmstmp, access],
              logger.webdb.onSuccess,
              // logger.webdb.onError
-             function(tx, e) {console.log("Error logging times");}//, e);}
+             function(tx, e) {/*console.log("Error logging times");*/}//, e);}
     );
   });
 }
@@ -388,14 +388,44 @@ logger.webdb.getWeight4UrlId = function (urlId, start_t, end_t) {
 
 }
 
+
 /** Retrieves all website Ids accesssed within [start_t, end_t) */
 logger.webdb.getUrls4Interval = function(start_t, end_t) {
   var db = logger.webdb.db;
+  var rec = [];
+
+  function getRecord (tx, result) {
+    console.log("rows ", result)
+    if (result != undefined) {
+      for (var i = 0; i < result.rows.length; i++) {
+        var row = result.rows.item(i);
+        var w = logger.webdb.getWeight4UrlId(urlId, start_t, end_t);
+        console.log(row['url']);
+        console.log("w ", w);
+        rec.push({url: row['url'], weigh:w})
+      }
+    }
+    console.log(rec);
+    return rec;
+  }
+
+  // Outputs array of [{url, weight}] pairs
+  function getUrl4Id(ids) {
+    var db = logger.webdb.db;
+    console.log(ids);
+    ids.forEach(function(urlId) {
+      db.transaction( function(tx) {
+        tx.executeSql("SELECT url from urls where id=?", [urlId],
+            getRecord,
+            function(tx, e) {console.log("Error getRecord", e)});
+      });
+    });
+  }
 
   // function dealing with returned rows.
-  function onUrlIdsRetrieved(tx, results) {
+  function onUrlIdsRetrieved(tx, results, callback) {
     var ids = []; // keeps track of unique ids, no redundant ids
-
+    console.log("urls retrieved")
     for (var i = 0; i < results.rows.length; i++) {
       // Each row is a standard JavaScript object indexed by col names,
       // not including rowid.
@@ -404,19 +434,20 @@ logger.webdb.getUrls4Interval = function(start_t, end_t) {
         ids.push(row['id']);
       }
     }
-    // console.log(ids);
-    return ids;
+    return callback(ids);
   };
 
   db.transaction(function(tx) {
     tx.executeSql(//"SELECT * from urls WHERE id=(SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?)",
       "SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?",
                   [start_t, end_t],
-                  onUrlIdsRetrieved,
+                  function(tx, r) {onUrlIdsRetrieved(tx, r, getRecord);},
                   function(tx, e) {console.log("Error Urls4Interval", e);}
     );
   });
 }
+
+
 
 /** Stores & Extract from db ranks table *****************************************/
 
@@ -497,7 +528,7 @@ var peer = function () {
  * some windows currently opened, first INITIALIZE dicts with 
  * currently opened tabs. */
 chrome.tabs.query({},function(tabs){     
-  console.log("\nIntializing dictionary with all open tabs\n");
+  // console.log("\nIntializing dictionary with all open tabs\n");
   
   // Initializes viewingID to first tab clicked by user
   // Nested fcts b/c javascript executes asynchronously, the only way for 
@@ -539,7 +570,7 @@ chrome.tabs.onCreated.addListener(function (newTab) {
 
   // add each tab to times table.
   logger.webdb.logTimes(newTab.url, initTime, 'c');
-  console.log("Tab created and tracked.", newTab.title);
+  // console.log("Tab created and tracked.", newTab.title);
 });
 
 
@@ -570,7 +601,7 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
     // add each tab to times table.
     logger.webdb.logTimes(updatedTab.url, updateTime, 'c');
 
-    console.log(tabId + " updated to " + tabState[tabId]);
+    // console.log(tabId + " updated to " + tabState[tabId]);
   };
 });
 
@@ -591,7 +622,7 @@ chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
     logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 's');
   }
 
-  console.log("Switched attention from tab " + viewingId + " to " + tabId);
+  // console.log("Switched attention from tab " + viewingId + " to " + tabId);
 
   // update viewingId to current tab and get handle on current tab
   viewingId = tabId;
@@ -618,7 +649,7 @@ chrome.tabs.onRemoved.addListener( function (tabId, removeInfo) {
   // should be safe to assume removed tab was already tracked (not tested yet)
   logger.webdb.logTimes(lastUrl, exitTime, 'e');
 
-  console.log("Tab " + tabId + " was removed.");
+  // console.log("Tab " + tabId + " was removed.");
 });
 
 
@@ -655,7 +686,7 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
     // add each tab to times table.
     logger.webdb.logTimes(newTab.url, replaceTime, 'c');
 
-    console.log("Tab " + removedTabId + " was replaced by " + addedTabId);
+    // console.log("Tab " + removedTabId + " was replaced by " + addedTabId);
   });
 });
 
@@ -682,6 +713,13 @@ chrome.topSites.get( function(mostVisited) {
     logger.webdb.logToTags(site.url, getTags(site.url, site.title))
   });
 
+  // PROBLEM: Runs asynchronously, specifically, if I try to return the websites
+  // I want, this call is the first to run after db are created, which means
+  // it finds no entries... However, if I try console.log(websites) it runs
+  // in the order synchro in this encapsulating topsites function
+  var l = logger.webdb.getUrls4Interval(1464858334712, 1465039213954);
+  // console.log("l is ", l);
+
   // // log a dummy selection of times
   // // Current time + various other times and access for url = http://www.boredpanda.com/.
   // initTime = 1464858334702;//(new Date).getTime();
@@ -694,12 +732,5 @@ chrome.topSites.get( function(mostVisited) {
   // console.log("Tags return: ", logger.webdb.getTags4Url("http://www.boredpanda.com/"));
   // console.log("Urls return: ", logger.webdb.getUrls4Tag("pandas"));
 
-  // PROBLEM: Runs asynchronously, specifically, if I try to return the websites
-  // I want, this call is the first to run after db are created, which means
-  // it finds no entries... However, if I try console.log(websites) it runs
-  // in the order synchro in this encapsulating topsites function
-  var l = logger.webdb.getUrls4Interval(1464858334712, 1465026302512);
-  console.log("l is ", l);
-
-  console.log("Stamps: ", logger.webdb.getWeight4UrlId(19, 1464858334712, 1465039213954));
+  // console.log("Stamps: ", logger.webdb.getWeight4UrlId(19, 1464858334712, 1465039213954));
 });
