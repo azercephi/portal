@@ -50,10 +50,10 @@ logger.webdb.cleanTables = function() {
 // one time-accesstype table, one domain table, one tags table
 // Because there's an order that these need to be made, and js is 
 // asynchronous, may need to nest callback functions
-logger.webdb.createTables = function() {
+logger.webdb.createDataTables = function() {
   var db = logger.webdb.db;  // for ease of use
 
-  logger.webdb.cleanTables(); // for testing and debugging
+  // logger.webdb.cleanTables(); // for testing and debugging
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
@@ -64,9 +64,10 @@ logger.webdb.createTables = function() {
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
-  // Create table associating url with id -- index table
+  // Create table associating url with id and title -- urls index table
   db.transaction(function(tx) {
     var tableStats = "urls(id INTEGER NOT NULL PRIMARY KEY," +
+                        " title VARCHAR(40)," +
                         " url VARCHAR(200) UNIQUE NOT NULL," +
                         " dom_id INT NOT NULL REFERENCES domains(id))";
     // can't seem to auto_incremement, but that should be ok b/c
@@ -95,17 +96,28 @@ logger.webdb.createTables = function() {
   });
 }
 
-/** Generalized query function that takes in a string that is in the format
- * of standard SQL SELECT queries. If the query is successful, the data
- * returned is are acted on by processor, which is a function that takes in
- * 2 args: transaction and results set. 
- */
-// Google for more explanation. http://www.html5rocks.com/en/tutorials/webdatabase/todo/
-// gives good quick overview
-logger.webdb.query = function(fullquery, processor) {
-  var db = logger.webdb.db;
+/** Deletes record table */
+logger.webdb.cleanRecords = function() {
+  var db = logger.webdb.db;  // for ease of use
+
+  db.transaction(function (tx) {
+    tx.executeSql('DROP TABLE ranks');
+  }); 
+}
+
+// Creates a table for storing ranks of tag-frequency pairs for GUI usage
+logger.webdb.createRecords = function() {
+  var db = logger.webdb.db;  // for ease of use
+
+  // logger.webdb.cleanRecords(); // for testing and debugging
+
+  // Create records table
   db.transaction(function(tx) {
-    tx.executeSql(fullquery, [], processor, logger.webdb.onError);
+    var tableStats = "ranks(id INTEGER NOT NULL," +
+                          " tag VARCHAR(40) NOT NULL," + 
+                          " freq INTEGER NOT NULL," +
+                          " PRIMARY KEY (id, tag, freq))";
+    tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 }
 
@@ -113,9 +125,11 @@ logger.webdb.query = function(fullquery, processor) {
  * and creates tables, if not already in existence */
 function init() {
   logger.webdb.open();
-  console.log("Create db for logging.")
-  logger.webdb.createTables();
-  console.log("Created tables for db.")
+  console.log("Create db for logging.");
+  logger.webdb.createDataTables();
+  console.log("Created tables for db.");
+  logger.webdb.createRecords();
+  console.log("Created table for recording tag-frequency pairs.")
 }
 
 // Initialize database for use -- This needs to happen first, exists possibility
@@ -163,11 +177,11 @@ var getTags = function(fullurl, title) {
    })
 };
 
-/** Databse side logging functions ********************************************/
+/** Data table logging functions ********************************************/
 
 // could we combine the logging url and domain. Would you ever log one w/out other?
 // Log url to 'domains' and 'urls'. Table updating was tested separately. 
-logger.webdb.logToUrls_Domain = function(fullurl) {
+logger.webdb.logToUrls_Domain = function(title, fullurl) {
   var db = logger.webdb.db;
   // get domain part of url
   var dname = getUrlDomain(fullurl);
@@ -183,10 +197,10 @@ logger.webdb.logToUrls_Domain = function(fullurl) {
           function(tx, e) {console.log("Error logging domains ");}// + dname + e); }
     );
     // update urls table
-    tx.executeSql("INSERT INTO urls (url, dom_id)" + 
-          " VALUES (?, "+
+    tx.executeSql("INSERT INTO urls (title, url, dom_id)" + 
+          " VALUES (?, ?, "+
           " (SELECT id FROM domains WHERE domain=?))",
-           [fullurl, dname],
+           [title, fullurl, dname],
            logger.webdb.onSuccess,
            // logger.webdb.onError
            function(tx, e) {console.log("Error logging urls ");}//+ fullurl + e); }
@@ -228,6 +242,168 @@ logger.webdb.logTimes = function(fullurl, tmstmp, access){
              function(tx, e) {console.log("Error logging times");}//, e);}
     );
   });
+}
+
+
+/** Query db Data tables **************************************************/
+
+/** Generalized query function that takes in a string that is in the format
+ * of standard SQL SELECT queries. If the query is successful, the data
+ * returned is are acted on by processor, which is a function that takes in
+ * 2 args: transaction and results set. 
+ */
+// Google for more explanation. http://www.html5rocks.com/en/tutorials/webdatabase/todo/
+// gives good quick overview
+logger.webdb.query = function(fullquery, processor) {
+  var db = logger.webdb.db;
+  db.transaction(function(tx) {
+    tx.executeSql(fullquery, [], processor, logger.webdb.onError);
+  });
+}
+
+/** Retrieves all tags related to specified url */
+// works
+logger.webdb.getTags4Url = function(fullurl) {
+  var db = logger.webdb.db;
+
+  // function for dealing with returned rows of tags
+  function onTagsRetrieved(tx, results) {
+    var t = [];
+    for (var i = 0; i < results.rows.length; i++) {
+      // Each row is a standard JavaScript object indexed by col names,
+      // not including rowid.
+      var row = results.rows.item(i);
+      t.push(row['tag']);
+    }
+    console.log("Tags of " + fullurl + " = " + t);
+    return t;
+  };
+
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT tag FROM tags WHERE id=(SELECT id FROM urls WHERE url=?)",
+                  [fullurl],
+                  onTagsRetrieved,
+                  function(tx, e) {console.log("Error Tags4Url", e);}
+    );
+  });
+}
+
+// function dealing with returned rows of urls Helper function for Urls4*
+function onUrlsRetrieved(tx, results) {
+  var u = [];
+  var j = 0;
+  for (var i = 0; i < results.rows.length; i++) {
+    var row = results.rows.item(i);
+    var pair = {url: row['url'], title: row['title']}
+    u.push(pair);
+  }
+  console.log("Urls :" + u);
+  return u;
+};
+
+/** Retrieves all urls related to specified tags => array of objects {title, url}
+ * Can modify to return "top n" urls to specified tag */
+logger.webdb.getUrls4Tag = function(tag) {
+  var db = logger.webdb.db;
+
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT * FROM urls WHERE id=(SELECT id FROM tags WHERE tag=?)",
+                  [tag],
+                  onUrlsRetrieved,
+                  function(tx, e) {console.log("Error onUrlsRetrieved", e); }
+    );
+  });
+}
+
+/** Retrieves all websites accesssed within [start_t, end_t) */
+logger.webdb.getUrls4Interval = function(start_t, end_t) {
+  var db = logger.webdb.db;
+
+  // function dealing with returned rows.
+  function onUrlIdsRetrieved(tx, results) {
+    var ids = []; // keeps track of unique ids, no redundant ids
+
+    for (var i = 0; i < results.rows.length; i++) {
+      // Each row is a standard JavaScript object indexed by col names,
+      // not including rowid.
+      var row = results.rows.item(i);
+      if (ids.indexOf(row['id']) == -1) {
+        ids.push(row['id']);
+
+        db.transaction(function(tx) {
+          tx.executeSql("SELECT * FROM urls WHERE id=?", [row['id']],
+                        onUrlsRetrieved,
+                        function(tx, e) {console.log("Error onUrlsIdsRetrieved", e);}
+          );
+        });
+      }
+    }
+    console.log(ids);
+    return ids;
+  };
+
+  db.transaction(function(tx) {
+    tx.executeSql(//"SELECT * from urls WHERE id=(SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?)",
+      "SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?",
+                  [start_t, end_t],
+                  onUrlIdsRetrieved,
+                  function(tx, e) {console.log("Error Urls4Interval", e);}
+    );
+  });
+}
+
+/** Stores & Extract from db ranks table *****************************************/
+
+// Stores the ranks in form of [{tag, freq}] into table.
+logger.webdb.storeRank = function (id, pairs) {
+  var db = logger.webdb.db;
+  // insert each pair as separate row
+  pairs.forEach(function (kfpair) {
+    console.log(kfpair['tag']);
+    db.transaction(function(tx) {
+      tx.executeSql("INSERT INTO ranks VALUES(?, ?, ?)",
+        [id, kfpair['tag'], kfpair['freq']],
+        function(tx, e) {console.log("worked storing ranks ")},
+        function(tx, e) {console.log("Error storing ranks ");
+      });
+    });
+  });
+}
+
+// Retrieves all rank pairs for a given id
+logger.webdb.getRanks = function (id) {
+  var db = logger.webdb.db;
+
+  var onRanksRetrieved = function(tx, results) {
+    var r = [];
+    for (var i = 0; i < results.rows.length; i++) {
+      var row = results.rows.item(i);
+      var pair = {url: row['tag'], title: row['freq']}
+      r.push(pair);
+    }
+    console.log("Ranks :" + r);
+    return r;
+  };
+
+  db.transaction(function(tx) {
+    tx.executeSql("SELECT * FROM ranks WHERE id=?",
+                  [id],
+                  onRanksRetrieved,
+                  function(tx, e) {console.log("Error getRanks", e);}
+    );
+  });
+}
+
+// Remove pair given id. If jsut removing, let newpairs be empty array
+logger.webdb.removeRanks = function (id, callback, newpairs) {
+  var db = logger.webdb.db;
+
+  db.transaction(function (tx) {
+    tx.executeSql("DELETE FROM ranks WHERE id=?", [id],
+                  logger.webdb.onError, logger.webdb.onSuccess);
+  });
+
+  callback(id, newpairs);
 }
 
 /** Track user browsing behavior ************************************************/
@@ -273,7 +449,7 @@ chrome.tabs.query({},function(tabs){
       tabState[tab.id] = tabInfo; 
 
       // add each tab to domains, urls, and tags, if not already there
-      logger.webdb.logToUrls_Domain(tab.url);
+      logger.webdb.logToUrls_Domain(tab.title, tab.url);
       logger.webdb.logToTags(tab.url, getTags(tab.url, tab.title));
 
       // add each tab to times table.
@@ -282,7 +458,6 @@ chrome.tabs.query({},function(tabs){
       else 
         logger.webdb.logTimes(tab.url, initTime, 'c');
     });
-    peer();
   });
 });
 
@@ -295,7 +470,7 @@ chrome.tabs.onCreated.addListener(function (newTab) {
   tabState[newTab.id] = tabInfo; 
 
   // add each tab to domains, urls, and tags, if not already there
-  logger.webdb.logToUrls_Domain(newTab.url);
+  logger.webdb.logToUrls_Domain(newTab.title, newTab.url);
   logger.webdb.logToTags(newTab.url, getTags(newTab.url, newTab.title));
 
   // add each tab to times table.
@@ -325,14 +500,13 @@ chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, updatedTab) {
     // track updatedTab to tabState
 
     // add each tab to domains, urls, and tags, if not already there
-    logger.webdb.logToUrls_Domain(updatedTab.url);
+    logger.webdb.logToUrls_Domain(updatedTab.title, updatedTab.url);
     logger.webdb.logToTags(updatedTab.url, getTags(updatedTab.url, updatedTab.title));
 
     // add each tab to times table.
     logger.webdb.logTimes(updatedTab.url, updateTime, 'c');
 
     console.log(tabId + " updated to " + tabState[tabId]);
-    peer();
   };
 });
 
@@ -363,8 +537,6 @@ chrome.tabs.onSelectionChanged.addListener(function(tabId, props) {
   if (viewingId in tabState) {
   logger.webdb.logTimes(tabState[viewingId].lastUrl, switchTime, 'r');
   }
-
-  peer();
 });
 
 
@@ -413,102 +585,34 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
     tabState[addedTabId] = tabInfo; 
 
     // add each tab to domains, urls, and tags, if not already there
-    logger.webdb.logToUrls_Domain(newTab.url);
+    logger.webdb.logToUrls_Domain(newTab.title, newTab.url);
     logger.webdb.logToTags(newTab.url, getTags(newTab.url, newTab.title));
 
     // add each tab to times table.
     logger.webdb.logTimes(newTab.url, replaceTime, 'c');
 
     console.log("Tab " + removedTabId + " was replaced by " + addedTabId);
-    peer();
   });
 });
-
-
-/** Query Database tables **************************************************/
-
-/** Retrieves all tags related to specified url */
-// works
-logger.webdb.getTags4Url = function(fullurl) {
-  var db = logger.webdb.db;
-
-  // function for dealing with returned rows
-  function onTagsRetrieved(tx, results) {
-    var t = [];
-    for (var i = 0; i < results.rows.length; i++) {
-      // Each row is a standard JavaScript object indexed by col names,
-      // not including rowid.
-      var row = results.rows.item(i);
-      t.push(row['tag']);
-    }
-    console.log("Tags of " + fullurl + " = " + t);
-  };
-
-  db.transaction(function(tx) {
-    tx.executeSql("SELECT * FROM tags WHERE id=(SELECT id FROM urls WHERE url=?)",
-                  [fullurl],
-                  onTagsRetrieved,
-                  function(tx, e) {console.log("Error Tags4Url", e);}
-    );
-  });
-}
-
-
-// /** Retrieves specified website and access record within [start_t, end_t) */
-
 
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 // TESTING for FUNCTIONS using dummy data
 
 
+
 // PROBLEM: main query gets the ids related to websites accessed in interval
 // but we want urls, so either we can combine the functions, or, what I am
 // trying to do, do a separate query to get url from id. But returning that
 // is also somewhat problematic, described later.
-/** Retrieves all websites accesssed within [start_t, end_t) */
-logger.webdb.getInterval_allUrls = function(start_t, end_t) {
-  var db = logger.webdb.db;
-
-  // function dealing with returned rows.
-  function onUrlIdsRetrieved(tx, results) {
-    var ids = []; // keeps track of unique ids
-    var wb = [];
-
-    for (var i = 0; i < results.rows.length; i++) {
-      // Each row is a standard JavaScript object indexed by col names,
-      // not including rowid.
-      var row = results.rows.item(i);
-      if (ids.indexOf(row['id']) == -1) {
-        ids.push(row['id']);
-
-        // // knowing id, get url
-        // db.transaction(function(tx) {
-        //   tx.executeSql("SELECT url FROM urls WHERE id=?", [row['id']],
-        //                 function(tx, r) { console.log(r.rows.item(0)); },
-        //                 logger.webdb.onError);
-        // });
-      }
-    }
-    console.log(ids);
-    return ids;
-  };
-
-  db.transaction(function(tx) {
-    tx.executeSql("SELECT id FROM times WHERE tmstmp BETWEEN ? AND ?",
-                  [start_t, end_t],
-                  onUrlIdsRetrieved,
-                  function(tx, e) {console.log("Error Tags4Url", e);}
-    );
-  });
-}
+// THIS A PROBLEM FOR ALL QUERY FUNCTIONS 
 
 chrome.topSites.get( function(mostVisited) {
   mostVisited.forEach( function(site) {
     // console.log(site.title);
 
     // store urls and domain to database
-    logger.webdb.logToUrls_Domain(site.url);
+    logger.webdb.logToUrls_Domain(site.title, site.url);
 
     // store tags to database
     logger.webdb.logToTags(site.url, getTags(site.url, site.title))
@@ -523,14 +627,13 @@ chrome.topSites.get( function(mostVisited) {
   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+30, 's');
   logger.webdb.logTimes("http://www.boredpanda.com/", initTime+40, 'e');
 
-  // logger.webdb.getTags4Url("http://www.boredpanda.com/");
+  console.log("Tags return: ", logger.webdb.getTags4Url("http://www.boredpanda.com/"));
+  console.log("Urls return: ", logger.webdb.getUrls4Tag("pandas"));
 
   // PROBLEM: Runs asynchronously, specifically, if I try to return the websites
   // I want, this call is the first to run after db are created, which means
   // it finds no entries... However, if I try console.log(websites) it runs
   // in the order synchro in this encapsulating topsites function
-  var l = logger.webdb.getInterval_allUrls(1464858334702, 1464858334740);
-  console.log("l is ", l);
+  // var l = logger.webdb.getUrls4Interval(1464858334712, 1465017953575);
+  // console.log("l is ", l);
 });
-
-
