@@ -12,6 +12,13 @@
   "chrome_url_overrides": {
     "newtab" : "mainpage.html"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["circle.css"],
+      "js": ["predict.js"]
+    }
+  ],
   "background": {
     "scripts": ["background.js"]
   }
