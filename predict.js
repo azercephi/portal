@@ -15,6 +15,10 @@ function init() {
         document.getElementById('hour').value = (new Date()).getHours();
     });
 
+    document.getElementById("update").addEventListener("click", function (argument) {
+        updateRanks((new Date()).getHours());
+    })
+
 }
 
 function createTagCircles() {
@@ -219,47 +223,3 @@ function updateRanks(date) {
     weighted_ranks = mergeRankings(weighted_ranks, overall_ranks);
     storeRanks("P" + String(d.getHours()), weighted_ranks);
 }
-
-function getPagesByTag(tag) {
-    // returns list of selected pages 
-    // [{"url": "www.blah.com", 
-    //   "title": "blah"},
-    //  {"url": "www.blah2.com", 
-    //   "title": "blah2"}]
-    // (max of 5 pages for now)
-
-    // place holder for testing
-    if (tag == "blah") {
-        return [{"url": "http://www.google.com", 
-                "title": "blah"},
-                {"url": "http://www.google.com", 
-                "title": "blah2"}];
-    }
-    return [{"url": "http://www.amazon.com",
-      "title": "amazon"},
-     {"url": "http://www.google.com",
-      "title": "blah2"}];
-    
-}
-
-function getRecords(start_time, end_time) {
-    // placeholder
-    return {"aha": 2, "blah": 8, "blahh": 8};
-}
-
-function storeRanks(rank_id, ranks) {
-    // placeholder
-    console.log(rank_id, ranks);
-}
-
-function getRanks(rank_id) {
-    // placeholder
-    return {"aha": 2, "blah": 8, "blahh": 8};
-}
-
-function pageFeedback (page, z) {
-    // adds feedback value z for page
-    // place holder
-    console.log(page, z);
-}
-

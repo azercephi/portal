@@ -17,7 +17,7 @@
     {
       "matches": ["<all_urls>"],
       "css": ["circle.css"],
-      "js": ["predict.js"]
+      "js": ["predict.js", "background.js"]
     }
   ],
   "background": {
