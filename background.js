@@ -694,7 +694,23 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
 //////////////////////////////////////////////////////////////////////////////
 // TESTING for FUNCTIONS using dummy data
 
+// k Alarm works and is pretty straightforwards
+var alarmName = 'calcRank';
+// create alarm
+chrome.alarms.create(alarmName, {delayInMinutes:0.1, periodInMinutes:0.1});
+// cancel alarm
+chrome.alarms.clear(alarmName);
 
+// see what alarms are currently active
+chrome.alarms.getAll(function(alarms) {
+  console.log(alarms);
+  console.log(alarms[0]);
+});
+
+// function that's called when alarm is called.
+chrome.alarms.onAlarm.addListener(function (alarm) {
+  console.log(alarm);
+});
 
 // PROBLEM: main query gets the ids related to websites accessed in interval
 // but we want urls, so either we can combine the functions, or, what I am
