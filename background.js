@@ -53,7 +53,7 @@ logger.webdb.cleanTables = function() {
 logger.webdb.createDataTables = function() {
   var db = logger.webdb.db;  // for ease of use
 
-  // logger.webdb.cleanTables(); // for testing and debugging
+  logger.webdb.cleanTables(); // for testing and debugging
 
   // Create table associating domains with id -- domain table
   db.transaction(function(tx) {
@@ -77,12 +77,12 @@ logger.webdb.createDataTables = function() {
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
-  // create table associating id with timestamp + access -- log table
+  // create table associating id with timestamp + access -- times table
   db.transaction(function(tx) {
-    var tableStats = "times(id INTEGER NOT NULL REFERENCES urls(id)," +
+    var tableStats = "times(id INT NOT NULL REFERENCES urls(id)," +
                         " tmstmp BIGINT NOT NULL," +
                         " access CHAR(1) NOT NULL," +
-                        " PRIMARY KEY (id, tmstmp))";
+                        " PRIMARY KEY (id, tmstmp, access))";
     tx.executeSql("CREATE TABLE IF NOT EXISTS " + tableStats, []);
   });
 
@@ -121,15 +121,52 @@ logger.webdb.createRecords = function() {
   });
 }
 
+/** Retrieves user history from x number of hours prior to the installation of
+ * the extension. Logs entries into data tables, using with c->e intervals
+ * b/t entries
+ */
+var useUserHistory = function (x) {
+  var start = (new Date).getTime() - x * 1000 * 60 * 60;
+
+  chrome.history.search({text: '', startTime: start},
+    function (histItems) {
+      // log each entry into db tables
+      if (histItems.length) {
+        var prevItem;
+        for (var i = 0; i < histItems.length; i++) {
+          // log to url, domain, tags, if not already there
+          histItem = histItems[i];
+          logger.webdb.logToUrls_Domain(histItem.title, histItem.url);
+          logger.webdb.logToTags(histItem.url, getTags(histItem.url, histItem.title));
+          
+          // log to times prevItem w/ 'e', if relevant
+          if (i > 0) {
+            logger.webdb.logTimes(prevItem.url, prevItem.lastVisitTime, 'e');
+          }
+          // log to times w/ 'c'
+          logger.webdb.logTimes(histItem.url, histItem.lastVisitTime, 'c');
+          
+          // update prevItem
+          prevItem = histItem;
+        }
+      }
+      else {
+        console.log("No history found.");
+      }
+    });
+}
+
 /** Function that initializes database, if not already in existence
  * and creates tables, if not already in existence */
 function init() {
-  logger.webdb.open();
-  // console.log("Create db for logging.");
+  logger.webdb.open(20);
+  console.log("Create db for logging.");
   logger.webdb.createDataTables();
-  // console.log("Created tables for db.");
+  console.log("Created tables for db.");
   logger.webdb.createRecords();
-  // console.log("Created table for recording tag-frequency pairs.")
+  console.log("Created table for recording tag-frequency pairs.")
+
+  useUserHistory(24);
 }
 
 // Initialize database for use -- This needs to happen first, exists possibility
@@ -395,7 +432,7 @@ logger.webdb.getUrls4Interval = function(start_t, end_t) {
   var rec = [];
 
   function getRecord (tx, result) {
-    console.log("rows ", result)
+    // console.log("rows ", result)
     if (result != undefined) {
       for (var i = 0; i < result.rows.length; i++) {
         var row = result.rows.item(i);
@@ -405,7 +442,7 @@ logger.webdb.getUrls4Interval = function(start_t, end_t) {
         rec.push({url: row['url'], weigh:w})
       }
     }
-    console.log(rec);
+    // console.log(rec);
     return rec;
   }
 
@@ -425,7 +462,7 @@ logger.webdb.getUrls4Interval = function(start_t, end_t) {
   // function dealing with returned rows.
   function onUrlIdsRetrieved(tx, results, callback) {
     var ids = []; // keeps track of unique ids, no redundant ids
-    console.log("urls retrieved")
+    // console.log("urls retrieved")
     for (var i = 0; i < results.rows.length; i++) {
       // Each row is a standard JavaScript object indexed by col names,
       // not including rowid.
@@ -693,8 +730,29 @@ chrome.tabs.onReplaced.addListener( function (addedTabId, removedTabId) {
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 // TESTING for FUNCTIONS using dummy data
+// In progress -- topSites, alarm api, history api
 
 
+
+////////////////////////
+
+// // k Alarm works and is pretty straightforwards
+// var alarmName = 'calcRank';
+// // create alarm
+// chrome.alarms.create(alarmName, {delayInMinutes:0.1, periodInMinutes:0.1});
+// // cancel alarm
+// chrome.alarms.clear(alarmName);
+
+// // see what alarms are currently active
+// chrome.alarms.getAll(function(alarms) {
+//   console.log(alarms);
+//   console.log(alarms[0]);
+// });
+
+// // function that's called when alarm is called.
+// chrome.alarms.onAlarm.addListener(function (alarm) {
+//   console.log(alarm);
+// });
 
 // PROBLEM: main query gets the ids related to websites accessed in interval
 // but we want urls, so either we can combine the functions, or, what I am
